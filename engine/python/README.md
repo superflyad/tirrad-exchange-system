@@ -24,10 +24,12 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 
-# 2) Configure CMake and point it at the venv Python executable
+# 2) Configure CMake and point it at the exact Python executable
+#    (Python3_ROOT_DIR is optional but can help CMake find the right libs/includes)
 cmake -S engine -B build/engine -G "Ninja" `
+  -DTES_BUILD_PYTHON_BINDINGS=ON `
   -DPython3_EXECUTABLE="$PWD/.venv/Scripts/python.exe" `
-  -DTES_BUILD_PYTHON_BINDINGS=ON
+  -DPython3_ROOT_DIR="$PWD/.venv"
 
 # 3) Build tests + Python extension
 cmake --build build/engine --config Release
@@ -39,8 +41,10 @@ $env:PYTHONPATH = "$PWD/build/engine/Release;$PWD/build/engine"
 python -c "import tes_engine; print(tes_engine.MatchingEngine())"
 ```
 
+CMake prints Python diagnostics at configure time (executable, version, include dirs, and library dirs) so you can confirm the selected interpreter and link inputs.
+
 ## Notes
 
 - The CMake logic prefers vendored `engine/third_party/pybind11` if present.
-- If vendored pybind11 is absent, CMake falls back to a preinstalled `pybind11` package (`find_package(pybind11 CONFIG)`).
+- If vendored pybind11 is absent, CMake falls back to a preinstalled `pybind11` package (`find_package(pybind11 CONFIG REQUIRED)`).
 - The build is network-free by default (no `FetchContent`).

@@ -1,2 +1,33 @@
 # tirrad-exchange-system
-TES is a deterministic C++ limit-order matching engine with a Python simulation + analytics layer and a web dashboard for run/trade observability and baseline comparisons.
+
+TES (tirrad-exchange-system) is a deterministic exchange simulation project that pairs a C++ matching-engine core with Python-based simulation and analytics workflows plus observability tooling for run and trade inspection. The project is focused on reproducible market-structure analysis and strategy evaluation in a **non-HFT analytical context**, prioritizing explainability, repeatability, and baseline comparison over ultra-low-latency production concerns.
+
+## Local Dev Quickstart
+
+> Placeholder quickstart commands (update as the project structure is finalized).
+
+### 1) Clone and enter the repository
+```powershell
+git clone <repo-url>
+cd tirrad-exchange-system
+```
+
+### 2) Set up Python environment (placeholder)
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -U pip
+# pip install -r requirements.txt
+```
+
+### 3) Configure and build C++ components (placeholder)
+```powershell
+cmake -S . -B build -G "Ninja"
+cmake --build build --config Release
+```
+
+### 4) Run tests/checks (placeholder)
+```powershell
+# pytest -q
+# ctest --test-dir build --output-on-failure
+```

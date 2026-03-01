@@ -1,5 +1,6 @@
 #pragma once
 
+#include <compare>
 #include <cstdint>
 
 namespace tes {
@@ -10,6 +11,8 @@ enum class Side { Bid, Ask };
 
 struct Price {
     std::int64_t ticks;
+
+    [[nodiscard]] constexpr auto operator<=>(const Price&) const = default;
 };
 
 struct Qty {

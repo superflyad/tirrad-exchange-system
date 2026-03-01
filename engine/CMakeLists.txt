@@ -11,6 +11,10 @@ add_library(tes_engine STATIC
     src/matching_engine.cpp
 )
 
+set_target_properties(tes_engine PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
 target_include_directories(tes_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -35,3 +39,39 @@ target_link_libraries(tes_engine_tests
 
 enable_testing()
 add_test(NAME tes_engine_tests COMMAND tes_engine_tests)
+
+option(TES_BUILD_PYTHON_BINDINGS "Build Python bindings for tes_engine" ON)
+
+if(TES_BUILD_PYTHON_BINDINGS)
+    find_package(Python3 COMPONENTS Interpreter Development.Module QUIET)
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pybind11/CMakeLists.txt")
+        add_subdirectory(third_party/pybind11)
+    else()
+        find_package(pybind11 CONFIG QUIET)
+    endif()
+
+    if(Python3_FOUND AND TARGET pybind11::module)
+        pybind11_add_module(tes_engine_python MODULE
+            python/bindings.cpp
+        )
+
+        target_link_libraries(tes_engine_python
+            PRIVATE
+                tes_engine
+        )
+
+        target_include_directories(tes_engine_python
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+        )
+
+        set_target_properties(tes_engine_python PROPERTIES
+            OUTPUT_NAME tes_engine
+        )
+
+        message(STATUS "Python bindings enabled: tes_engine module")
+    else()
+        message(STATUS "Python bindings disabled (Python3 or pybind11 not found)")
+    endif()
+endif()

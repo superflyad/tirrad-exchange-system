@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(tes_engine STATIC
     src/version.cpp
+    src/matching_engine.cpp
 )
 
 target_include_directories(tes_engine
@@ -19,6 +20,7 @@ add_executable(tes_engine_tests
     tests/test_version.cpp
     tests/test_types_and_events.cpp
     tests/test_order_book.cpp
+    tests/test_matching_engine.cpp
 )
 
 target_include_directories(tes_engine_tests

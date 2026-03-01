@@ -16,6 +16,12 @@ namespace tes {
 
 class OrderBook {
   public:
+    struct FillResult {
+        OrderId maker_id;
+        Price price;
+        Qty qty;
+    };
+
     [[nodiscard]] std::vector<Event> add_limit_order(const Order& order) {
         if (!is_valid_price(order.price) || !is_valid_qty(order.qty)) {
             return {};
@@ -109,6 +115,18 @@ class OrderBook {
         return it == asks.end() ? 0U : it->second.size();
     }
 
+    [[nodiscard]] std::optional<FillResult> fill_best(Side side, Qty qty) {
+        if (!is_valid_qty(qty)) {
+            return std::nullopt;
+        }
+
+        if (side == Side::Bid) {
+            return fill_best_from_levels(bids, qty);
+        }
+
+        return fill_best_from_levels(asks, qty);
+    }
+
   private:
     template <typename PriceLevels>
     static void erase_from_levels(PriceLevels& levels, OrderId id, Price price) {
@@ -130,6 +148,35 @@ class OrderBook {
         if (level_orders.empty()) {
             levels.erase(level_it);
         }
+    }
+
+    template <typename PriceLevels>
+    std::optional<FillResult> fill_best_from_levels(PriceLevels& levels, Qty qty) {
+        if (levels.empty()) {
+            return std::nullopt;
+        }
+
+        auto level_it = levels.begin();
+        auto& level_orders = level_it->second;
+        if (level_orders.empty()) {
+            return std::nullopt;
+        }
+
+        Order& maker = level_orders.front();
+        const Qty traded{std::min(qty.value, maker.qty.value)};
+        maker.qty.value -= traded.value;
+
+        const FillResult result{maker.id, maker.price, traded};
+
+        if (maker.qty.value == 0) {
+            order_index.erase(maker.id);
+            level_orders.pop_front();
+            if (level_orders.empty()) {
+                levels.erase(level_it);
+            }
+        }
+
+        return result;
     }
 
     [[nodiscard]] static bool prices_equal(const std::optional<Price>& lhs, const std::optional<Price>& rhs) {

@@ -17,6 +17,7 @@ target_include_directories(tes_engine
 
 add_executable(tes_engine_tests
     tests/test_version.cpp
+    tests/test_types_and_events.cpp
 )
 
 target_include_directories(tes_engine_tests

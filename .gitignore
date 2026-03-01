@@ -211,3 +211,6 @@ runs/*
 !runs/.gitkeep
 data/*
 !data/.gitkeep
+
+# TES engine C++ build output
+engine/build/

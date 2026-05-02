@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_NAME="$(basename "$0")"
+
+is_windows_shell() {
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+default_preset() {
+  if is_windows_shell; then
+    printf '%s\n' "debug-msvc"
+  else
+    printf '%s\n' "debug-ninja"
+  fi
+}
+
+usage() {
+  cat <<USAGE
+Usage:
+  ./${SCRIPT_NAME} check [preset]
+  ./${SCRIPT_NAME} clean
+  ./${SCRIPT_NAME} presets
+USAGE
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+  check)
+    preset="${2:-$(default_preset)}"
+    echo "[TES] Configure preset: ${preset}"
+    cmake --preset "${preset}"
+
+    echo "[TES] Build preset: ${preset}"
+    cmake --build --preset "${preset}"
+
+    echo "[TES] Test preset: ${preset}"
+    ctest --preset "${preset}"
+    ;;
+  clean)
+    echo "[TES] Remove build output: out/build"
+    rm -rf out/build
+    ;;
+  presets)
+    echo "[TES] List CMake presets"
+    cmake --list-presets
+    ;;
+  ""|-h|--help|help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: ${cmd}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

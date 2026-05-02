@@ -1,0 +1,61 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "debug-ninja",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/debug-ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TES_BUILD_PYTHON_BINDINGS": "OFF"
+      }
+    },
+    {
+      "name": "debug-msvc",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/out/build/debug-msvc",
+      "cacheVariables": {
+        "TES_BUILD_PYTHON_BINDINGS": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug-ninja",
+      "configurePreset": "debug-ninja"
+    },
+    {
+      "name": "debug-msvc",
+      "configurePreset": "debug-msvc",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug-ninja",
+      "configurePreset": "debug-ninja",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-msvc",
+      "configurePreset": "debug-msvc",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -30,6 +30,7 @@ Do not create new top-level folders unless explicitly requested.
 - Do not expose enum integers, variant indexes, C++ class names, namespaces, debug fields, or other implementation-only fields in public Python output.
 - Strategy and simulation code must use strict command and event models.
 - Do not weaken parser or validator strictness to make tests pass.
+- Do not pass raw dictionaries beyond parser/serialization boundaries when strict models exist.
 
 ## C++ Standards
 - Use C++20.
@@ -50,6 +51,7 @@ Do not create new top-level folders unless explicitly requested.
 - Reject `bool` where `int` is required.
 - Do not pass raw dictionaries beyond parser/serialization boundaries when strict models exist.
 - Keep modules small and cohesive.
+- Avoid ambiguous structures.
 
 ## Public API Standards
 Canonical event serialization API:
@@ -142,6 +144,7 @@ The Testing section must list only tests actually run.
 - Use requested branch name, commit title, and PR title when provided.
 - Stop and report immediately if the task requires files outside the allowed scope.
 - For parallel tasks, avoid shared files unless the task explicitly owns them.
+- PR bodies must follow `.github/pull_request_template.md`.
 
 ## Parallel Task Rules
 - Parallel tasks must have disjoint file ownership.

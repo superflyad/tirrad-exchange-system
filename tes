@@ -5,12 +5,8 @@ SCRIPT_NAME="$(basename "$0")"
 
 is_windows_shell() {
   case "$(uname -s 2>/dev/null || echo unknown)" in
-    MINGW*|MSYS*|CYGWIN*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
   esac
 }
 
@@ -22,28 +18,96 @@ default_preset() {
   fi
 }
 
+python_preset() {
+  if is_windows_shell; then
+    printf '%s\n' "release-msvc-python"
+  else
+    printf '%s\n' "debug-ninja-python"
+  fi
+}
+
+python_ext_dir() {
+  if is_windows_shell; then
+    printf '%s\n' "Release"
+  else
+    printf '%s\n' ""
+  fi
+}
+
+run_core_check() {
+  local preset="${1:-$(default_preset)}"
+  echo "[TES] Configure preset: ${preset}"
+  cmake --preset "${preset}"
+  echo "[TES] Build preset: ${preset}"
+  cmake --build --preset "${preset}"
+  echo "[TES] Test preset: ${preset}"
+  ctest --preset "${preset}"
+}
+
+run_python_check() {
+  local preset="$1"
+  local build_config="${2:-}"
+  local pybin
+  pybin="$(command -v python3 || command -v python)"
+  if [[ -z "${pybin}" ]]; then
+    echo "python3/python not found in PATH" >&2
+    exit 1
+  fi
+
+  local cmake_args=(--preset "${preset}" -DPython3_EXECUTABLE="${pybin}")
+  if is_windows_shell; then
+    local pybind11_dir
+    pybind11_dir="$(${pybin} -m pybind11 --cmakedir)"
+    cmake_args+=( -Dpybind11_DIR="${pybind11_dir}" )
+  fi
+
+  echo "[TES] Configure Python bindings preset: ${preset}"
+  cmake "${cmake_args[@]}"
+
+  echo "[TES] Build Python bindings preset: ${preset}"
+  if [[ -n "${build_config}" ]]; then
+    cmake --build --preset "${preset}" --config "${build_config}"
+  else
+    cmake --build --preset "${preset}"
+  fi
+
+  local ext_dir
+  ext_dir="$(python_ext_dir)"
+  local module_path="out/build/${preset}/engine"
+  if [[ -n "${ext_dir}" ]]; then
+    module_path="${module_path}/${ext_dir}"
+  fi
+
+  echo "[TES] Python import smoke test from ${module_path}"
+  "${pybin}" -c "import sys; sys.path.insert(0, r'${module_path}'); import tes_engine; print('import ok'); print(tes_engine.MatchingEngine())"
+}
+
 usage() {
   cat <<USAGE
 Usage:
-  ./${SCRIPT_NAME} check [preset]
+  ./${SCRIPT_NAME} check [preset|python|python-release]
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
 USAGE
 }
 
 cmd="${1:-}"
+arg="${2:-}"
 
 case "$cmd" in
   check)
-    preset="${2:-$(default_preset)}"
-    echo "[TES] Configure preset: ${preset}"
-    cmake --preset "${preset}"
-
-    echo "[TES] Build preset: ${preset}"
-    cmake --build --preset "${preset}"
-
-    echo "[TES] Test preset: ${preset}"
-    ctest --preset "${preset}"
+    case "$arg" in
+      "" ) run_core_check ;;
+      python ) run_python_check "$(python_preset)" "$(is_windows_shell && echo Release || true)" ;;
+      python-release )
+        if is_windows_shell; then
+          run_python_check "release-msvc-python" "Release"
+        else
+          run_python_check "debug-ninja-python"
+        fi
+        ;;
+      * ) run_core_check "$arg" ;;
+    esac
     ;;
   clean)
     echo "[TES] Remove build output: out/build"

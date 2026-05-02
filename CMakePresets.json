@@ -44,6 +44,14 @@
       "cacheVariables": {
         "TES_BUILD_PYTHON_BINDINGS": "ON"
       }
+    },
+    {
+      "name": "release-msvc-python",
+      "inherits": "debug-msvc",
+      "binaryDir": "${sourceDir}/out/build/release-msvc-python",
+      "cacheVariables": {
+        "TES_BUILD_PYTHON_BINDINGS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -64,6 +72,11 @@
       "name": "debug-msvc-python",
       "configurePreset": "debug-msvc-python",
       "configuration": "Debug"
+    },
+    {
+      "name": "release-msvc-python",
+      "configurePreset": "release-msvc-python",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -93,6 +106,14 @@
       "name": "debug-msvc-python",
       "configurePreset": "debug-msvc-python",
       "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-msvc-python",
+      "configurePreset": "release-msvc-python",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       }

@@ -6,15 +6,42 @@ TES (tirrad-exchange-system) is a deterministic exchange simulation project that
 
 ```
 engine/   C++ matching engine core
-sim/      Python simulation + analytics orchestration
-api/      service/API boundary for run control and data access
-web/      dashboard and observability UI/backend
+python/   Python simulation + analytics orchestration
+dashboard/ dashboard and observability UI/backend
 scripts/  developer automation
 docs/     architecture and developer notes
 tests/    cross-module integration tests
 runs/     local run artifacts (gitkept, ignored contents)
 data/     local datasets/cache (gitkept, ignored contents)
 ```
+
+
+## Architecture Snapshot (Tasks 7–10)
+
+- **C++ engine is the behavior source of truth** for matching/execution and deterministic state transitions.
+- **`engine/python/bindings.cpp` is the serialization firewall** between C++ domain internals and Python workflows.
+- **Python event models are strict** and validated before downstream use.
+- **Python command models are strict** and validated before engine submission.
+- **Engine adapter** centralizes command/event interaction with the bindings layer.
+- **Simulation runner** coordinates deterministic run setup, execution, and artifact capture.
+- **Strategy interface** defines pluggable strategy-to-command behavior in a deterministic loop.
+- **Parallel Codex task workflow** uses bounded task slices with integration checks for low-conflict iteration.
+
+### Verified architecture checks
+
+```bash
+./tes check
+./tes check python
+./tes check python-release
+```
+
+### Roadmap
+
+- Task 11: strategy simulation loop
+- Task 12: analytics
+- Task 13: persistence
+- Task 14: API
+- Task 15: dashboard
 
 ## Local Dev Quickstart
 

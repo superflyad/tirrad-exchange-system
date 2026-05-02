@@ -28,6 +28,22 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
+    },
+    {
+      "name": "debug-ninja-python",
+      "inherits": "debug-ninja",
+      "binaryDir": "${sourceDir}/out/build/debug-ninja-python",
+      "cacheVariables": {
+        "TES_BUILD_PYTHON_BINDINGS": "ON"
+      }
+    },
+    {
+      "name": "debug-msvc-python",
+      "inherits": "debug-msvc",
+      "binaryDir": "${sourceDir}/out/build/debug-msvc-python",
+      "cacheVariables": {
+        "TES_BUILD_PYTHON_BINDINGS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -38,6 +54,15 @@
     {
       "name": "debug-msvc",
       "configurePreset": "debug-msvc",
+      "configuration": "Debug"
+    },
+    {
+      "name": "debug-ninja-python",
+      "configurePreset": "debug-ninja-python"
+    },
+    {
+      "name": "debug-msvc-python",
+      "configurePreset": "debug-msvc-python",
       "configuration": "Debug"
     }
   ],
@@ -52,6 +77,21 @@
     {
       "name": "debug-msvc",
       "configurePreset": "debug-msvc",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-ninja-python",
+      "configurePreset": "debug-ninja-python",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-msvc-python",
+      "configurePreset": "debug-msvc-python",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

@@ -1,3 +1,4 @@
+from .commands import CancelOrderCommand, LimitOrderCommand, TesCommand, parse_command, parse_commands
 from .events import (
     OrderAcceptedData,
     OrderAcceptedEvent,
@@ -22,6 +23,11 @@ __all__ = [
     "TopOfBookData",
     "TopOfBookEvent",
     "TesEvent",
+    "LimitOrderCommand",
+    "CancelOrderCommand",
+    "TesCommand",
+    "parse_command",
+    "parse_commands",
     "parse_event",
     "parse_events",
 ]

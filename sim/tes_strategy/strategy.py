@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from sim.tes_models.commands import LimitOrderCommand, TesCommand
+from sim.tes_models.events import TesEvent
+
+
+@dataclass(frozen=True)
+class StrategyContext:
+    """Placeholder context for strategy state and shared simulation metadata."""
+
+    pass
+
+
+class Strategy:
+    """Base interface for TES simulation strategies."""
+
+    def on_start(self) -> list[TesCommand]:
+        raise NotImplementedError
+
+    def on_event(self, event: TesEvent) -> list[TesCommand]:
+        raise NotImplementedError
+
+
+class SimpleMarketMaker(Strategy):
+    """Simple example strategy that posts one buy and one sell limit order at startup."""
+
+    def __init__(self, bid_price: int = 99, ask_price: int = 101, order_qty: int = 1) -> None:
+        self.bid_price = bid_price
+        self.ask_price = ask_price
+        self.order_qty = order_qty
+
+    def on_start(self) -> list[TesCommand]:
+        return [
+            LimitOrderCommand(side="BUY", price=self.bid_price, qty=self.order_qty),
+            LimitOrderCommand(side="SELL", price=self.ask_price, qty=self.order_qty),
+        ]
+
+    def on_event(self, event: TesEvent) -> list[TesCommand]:
+        _ = event
+        return []

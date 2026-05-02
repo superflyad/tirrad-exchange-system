@@ -36,6 +36,16 @@ cmake --preset debug-msvc-python
 cmake --build --preset debug-msvc-python --config Debug
 ```
 
+If CMake finds Python but MSBuild fails to open `pythonXY.lib`, configure with explicit paths:
+
+```powershell
+cmake --preset debug-msvc-python `
+  -DPython3_EXECUTABLE="C:/Program Files/Python313/python.exe" `
+  -DPython3_INCLUDE_DIR="C:/Program Files/Python313/Include" `
+  -DPython3_LIBRARY="C:/Program Files/Python313/libs/python313.lib" `
+  -Dpybind11_DIR="<pybind11 cmake dir>"
+```
+
 Discovery behavior when Python bindings are enabled (`TES_BUILD_PYTHON_BINDINGS=ON`):
 - CMake requires `Python3` components `Interpreter` and `Development.Module`.
 - CMake prefers vendored `engine/third_party/pybind11` when present.

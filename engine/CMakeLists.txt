@@ -94,6 +94,25 @@ if(TES_BUILD_PYTHON_BINDINGS)
         target_link_libraries(tes_engine_python PRIVATE Python3::Python)
     endif()
 
+    if(WIN32 AND MSVC)
+        set(TES_PYTHON_LINK_LIBRARIES "")
+        if(DEFINED Python3_LIBRARY AND Python3_LIBRARY)
+            list(APPEND TES_PYTHON_LINK_LIBRARIES "${Python3_LIBRARY}")
+        elseif(DEFINED Python3_LIBRARIES AND Python3_LIBRARIES)
+            list(APPEND TES_PYTHON_LINK_LIBRARIES ${Python3_LIBRARIES})
+        endif()
+
+        if(TES_PYTHON_LINK_LIBRARIES)
+            target_link_libraries(tes_engine_python PRIVATE ${TES_PYTHON_LINK_LIBRARIES})
+            message(STATUS "Windows/MSVC Python import library path(s): ${TES_PYTHON_LINK_LIBRARIES}")
+        else()
+            message(WARNING
+                "Windows/MSVC Python import library path was not provided by CMake. "
+                "If linking fails, pass -DPython3_LIBRARY=<full path to pythonXY.lib>."
+            )
+        endif()
+    endif()
+
     target_include_directories(tes_engine_python
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -102,6 +121,14 @@ if(TES_BUILD_PYTHON_BINDINGS)
     set_target_properties(tes_engine_python PROPERTIES
         OUTPUT_NAME tes_engine
     )
+
+    if(DEFINED Python3_LIBRARY AND Python3_LIBRARY)
+        message(STATUS "Python library selected: ${Python3_LIBRARY}")
+    elseif(DEFINED Python3_LIBRARIES AND Python3_LIBRARIES)
+        message(STATUS "Python libraries selected: ${Python3_LIBRARIES}")
+    else()
+        message(STATUS "Python library selected: managed via Python3 target only")
+    endif()
 
     message(STATUS "Python bindings enabled: tes_engine module")
 endif()

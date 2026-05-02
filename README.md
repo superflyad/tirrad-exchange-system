@@ -66,6 +66,13 @@ cmake --build --preset debug-ninja-python
 py -3.11 -m pip install --user pybind11
 cmake --preset debug-msvc-python
 cmake --build --preset debug-msvc-python --config Debug
+
+# If MSBuild cannot open pythonXY.lib, pass explicit Python/pybind11 paths
+cmake --preset debug-msvc-python ^
+  -DPython3_EXECUTABLE="C:/Program Files/Python313/python.exe" ^
+  -DPython3_INCLUDE_DIR="C:/Program Files/Python313/Include" ^
+  -DPython3_LIBRARY="C:/Program Files/Python313/libs/python313.lib" ^
+  -Dpybind11_DIR="<pybind11 cmake dir>"
 ```
 
 When `TES_BUILD_PYTHON_BINDINGS=ON`, CMake discovers `pybind11` in this order:

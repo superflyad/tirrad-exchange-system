@@ -58,6 +58,24 @@ cmake --build --preset debug-msvc --config Debug
 ctest --test-dir out/build/debug-msvc -C Debug --output-on-failure
 ```
 
+### 3c) Use the TES wrapper command (recommended)
+```bash
+# Show available configure presets
+./tes presets
+
+# Run configure + build + test with default preset
+# - Windows Git Bash/MSYS: debug-msvc
+# - Linux/Codex:            debug-ninja
+./tes check
+
+# Run with an explicit preset
+./tes check debug-ninja
+./tes check debug-msvc
+
+# Remove generated build tree
+./tes clean
+```
+
 ### 4) Run tests/checks (placeholder)
 ```powershell
 # pytest -q

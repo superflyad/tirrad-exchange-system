@@ -14,7 +14,9 @@ Create branches using one of these prefixes:
 
 Do not use the `codex/` prefix.
 
-Do not add the `codex` label to PRs.
+Do not add the `codex` label manually.
+
+Codex connector labels may be removed manually.
 
 ## Commit Format
 Use Conventional Commits:

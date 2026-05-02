@@ -139,8 +139,9 @@ The Testing section must list only tests actually run.
 - Do not edit unrelated files.
 - Do not add dependencies without explicit approval.
 - Do not use `codex/` branch prefixes.
-- Do not add a `codex` label.
-- Codex-created PRs must not keep the `codex` label; repository automation removes it if added.
+- Codex-created PRs may receive a `codex` label from the connector.
+- Do not add the `codex` label manually.
+- If present, remove it manually during PR review if desired.
 - Use Conventional Commits.
 - Use requested branch name, commit title, and PR title when provided.
 - Stop and report immediately if the task requires files outside the allowed scope.

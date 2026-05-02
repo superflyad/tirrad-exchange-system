@@ -80,7 +80,7 @@ run_python_check() {
 
   echo "[TES] Python import smoke test from ${module_path}"
   PYTHONPATH="${module_path}${PYTHONPATH:+:${PYTHONPATH}}" \
-    "${pybin}" -m pytest -q sim/tests/test_tes_engine_smoke.py
+    "${pybin}" -m pytest -q sim/tests
 }
 
 usage() {

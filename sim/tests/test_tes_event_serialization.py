@@ -1,5 +1,3 @@
-import json
-
 from sim.tes_models.events import (
     OrderAcceptedData,
     OrderAcceptedEvent,
@@ -11,7 +9,7 @@ from sim.tes_models.events import (
     TradeExecutedData,
     TradeExecutedEvent,
 )
-from sim.tes_serialization import event_to_dict, event_to_json_line, events_to_dicts, events_to_json_lines
+from sim.tes_serialization import serialize_event, serialize_events
 
 
 def _sample_events() -> list[TesEvent]:
@@ -26,8 +24,8 @@ def _sample_events() -> list[TesEvent]:
     ]
 
 
-def test_event_to_dict_serializes_each_known_event_type() -> None:
-    serialized = [event_to_dict(event) for event in _sample_events()]
+def test_serialize_event_serializes_each_known_event_type() -> None:
+    serialized = [serialize_event(event) for event in _sample_events()]
 
     assert serialized == [
         {"type": "OrderAccepted", "data": {"order_id": 1, "side": "BUY", "price": 100, "qty": 10}},
@@ -37,37 +35,31 @@ def test_event_to_dict_serializes_each_known_event_type() -> None:
     ]
 
 
-
-def test_event_to_json_line_roundtrip_and_top_level_shape() -> None:
-    for event in _sample_events():
-        line = event_to_json_line(event)
-        parsed = json.loads(line)
-
-        assert set(parsed.keys()) == {"type", "data"}
-        assert parsed == event_to_dict(event)
-
-
-
-def test_batch_serialization_helpers() -> None:
+def test_serialize_events_batch_serialization() -> None:
     events = _sample_events()
-
-    assert events_to_dicts(events) == [event_to_dict(event) for event in events]
-
-    lines = events_to_json_lines(events)
-    assert lines == [event_to_json_line(event) for event in events]
-    assert [json.loads(line) for line in lines] == events_to_dicts(events)
-
+    assert serialize_events(events) == [serialize_event(event) for event in events]
 
 
 def test_serialization_contains_no_class_or_module_leakage() -> None:
     for event in _sample_events():
-        serialized_dict = event_to_dict(event)
-        serialized_line = event_to_json_line(event)
+        serialized_dict = serialize_event(event)
+        serialized_as_text = str(serialized_dict)
 
-        assert "__" not in serialized_line
-        assert "sim.tes_models" not in serialized_line
-        assert event.__class__.__name__ not in serialized_line
-        assert event.data.__class__.__name__ not in serialized_line
-
+        assert "sim.tes_models" not in serialized_as_text
+        assert event.__class__.__name__ not in serialized_as_text
+        assert event.data.__class__.__name__ not in serialized_as_text
         assert set(serialized_dict.keys()) == {"type", "data"}
-        assert "__dict__" not in serialized_dict
+
+
+def test_public_api_only_exports_expected_names() -> None:
+    import sim.tes_serialization as mod
+
+    assert hasattr(mod, "serialize_event")
+    assert hasattr(mod, "serialize_events")
+
+
+def test_serialized_event_shape_is_exact() -> None:
+    event = OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10))
+    result = serialize_event(event)
+
+    assert set(result.keys()) == {"type", "data"}

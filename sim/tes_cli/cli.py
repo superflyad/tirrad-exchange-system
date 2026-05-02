@@ -37,6 +37,10 @@ def _build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--runs-dir", default="out/runs")
     replay_parser.set_defaults(handler=_handle_replay)
 
+    run_parser = sim_subparsers.add_parser("run", help="Run a strategy simulation")
+    run_parser.add_argument("--strategy", required=True)
+    run_parser.set_defaults(func=_handle_run, handler=_handle_run)
+
     return parser
 
 
@@ -64,6 +68,12 @@ def _handle_inspect(args: argparse.Namespace) -> int:
     return int(handle_inspect(args))
 
 
+def _handle_run(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.run import handle_run
+
+    return int(handle_run(args))
+
+
 def _handle_replay(args: argparse.Namespace) -> int:
     from sim.tes_cli.commands.replay import replay_saved_run
 
@@ -78,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code)
 
-    handler = getattr(args, "handler", None)
+    handler = getattr(args, "handler", getattr(args, "func", None))
     if handler is None:
         parser.print_help()
         return 0

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from argparse import Namespace
-
 import pytest
+
+from sim.tes_cli.cli import main
 
 try:
     import tes_engine
@@ -11,16 +11,13 @@ try:
 except ImportError:
     HAS_ENGINE = False
 
-if HAS_ENGINE:
-    from sim.tes_cli.commands.run import handle_run
-
 
 @pytest.mark.skipif(
     not HAS_ENGINE,
     reason="tes_engine extension not available",
 )
-def test_run_simple_market_maker(capsys) -> None:
-    returncode = handle_run(Namespace(strategy="simple_market_maker"))
+def test_run_simple_market_maker(capsys: pytest.CaptureFixture[str]) -> None:
+    returncode = main(["sim", "run", "--strategy", "simple_market_maker"])
 
     out = capsys.readouterr().out
     assert returncode == 0
@@ -33,8 +30,8 @@ def test_run_simple_market_maker(capsys) -> None:
     not HAS_ENGINE,
     reason="tes_engine extension not available",
 )
-def test_run_unknown_strategy_returns_error(capsys) -> None:
-    returncode = handle_run(Namespace(strategy="unknown"))
+def test_run_unknown_strategy_returns_error(capsys: pytest.CaptureFixture[str]) -> None:
+    returncode = main(["sim", "run", "--strategy", "unknown"])
 
     out = capsys.readouterr().out
     assert returncode != 0

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -15,12 +16,58 @@ def _build_parser() -> argparse.ArgumentParser:
     version_parser = subparsers.add_parser("version", help="Show TES CLI version")
     version_parser.set_defaults(handler=_handle_about)
 
+    sim_parser = subparsers.add_parser("sim", help="Run simulation workflows")
+    sim_subparsers = sim_parser.add_subparsers(dest="sim_command")
+
+    demo_parser = sim_subparsers.add_parser("demo", help="Run deterministic TES demo simulation")
+    demo_parser.set_defaults(handler=_handle_demo)
+
+    save_parser = sim_subparsers.add_parser("save", help="Persist a simulation run")
+    save_parser.add_argument("--run-id", default=None)
+    save_parser.add_argument("--runs-dir", default="out/runs")
+    save_parser.set_defaults(handler=_handle_save)
+
+    inspect_parser = sim_subparsers.add_parser("inspect", help="Inspect a saved run")
+    inspect_parser.add_argument("run_id")
+    inspect_parser.add_argument("--runs-dir", default="out/runs")
+    inspect_parser.set_defaults(handler=_handle_inspect)
+
+    replay_parser = sim_subparsers.add_parser("replay", help="Replay a saved run")
+    replay_parser.add_argument("run_id")
+    replay_parser.add_argument("--runs-dir", default="out/runs")
+    replay_parser.set_defaults(handler=_handle_replay)
+
     return parser
 
 
 def _handle_about(_args: argparse.Namespace) -> int:
     print("Tirrad Exchange System (TES) Python CLI foundation")
     return 0
+
+
+def _handle_demo(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.demo import handle_demo
+
+    return int(handle_demo(args))
+
+
+def _handle_save(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.save import run_save_command
+
+    run_save_command(base_dir=Path(args.runs_dir), run_id=args.run_id)
+    return 0
+
+
+def _handle_inspect(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.inspect import handle_inspect
+
+    return int(handle_inspect(args))
+
+
+def _handle_replay(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.replay import replay_saved_run
+
+    return int(replay_saved_run(run_id=args.run_id, base_dir=Path(args.runs_dir)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,3 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return int(handler(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

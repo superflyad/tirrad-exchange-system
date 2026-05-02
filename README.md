@@ -47,12 +47,12 @@ cmake --build build --config Release
 
 ### 3b) Configure and build with CMake presets (cross-platform)
 ```bash
-# Linux / Codex
+# Shared Bash / Codex (Linux + Windows Git Bash)
 cmake --preset debug-ninja
 cmake --build --preset debug-ninja
 ctest --preset debug-ninja
 
-# Windows / MSVC
+# Windows Visual Studio / MSVC
 cmake --preset debug-msvc
 cmake --build --preset debug-msvc --config Debug
 ctest --test-dir out/build/debug-msvc -C Debug --output-on-failure

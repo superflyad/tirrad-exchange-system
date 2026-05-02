@@ -13,8 +13,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "TES_BUILD_PYTHON_BINDINGS": "OFF"
-      },
-      "condition": {"type":"equals","lhs":"${hostSystemName}","rhs":"Linux"}
+      }
     },
     {
       "name": "debug-msvc",
@@ -24,15 +23,39 @@
       "cacheVariables": {
         "TES_BUILD_PYTHON_BINDINGS": "OFF"
       },
-      "condition": {"type":"equals","lhs":"${hostSystemName}","rhs":"Windows"}
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "buildPresets": [
-    {"name":"debug-ninja","configurePreset":"debug-ninja"},
-    {"name":"debug-msvc","configurePreset":"debug-msvc","configuration":"Debug"}
+    {
+      "name": "debug-ninja",
+      "configurePreset": "debug-ninja"
+    },
+    {
+      "name": "debug-msvc",
+      "configurePreset": "debug-msvc",
+      "configuration": "Debug"
+    }
   ],
   "testPresets": [
-    {"name":"debug-ninja","configurePreset":"debug-ninja","output":{"outputOnFailure":true}},
-    {"name":"debug-msvc","configurePreset":"debug-msvc","configuration":"Debug","output":{"outputOnFailure":true}}
+    {
+      "name": "debug-ninja",
+      "configurePreset": "debug-ninja",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug-msvc",
+      "configurePreset": "debug-msvc",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

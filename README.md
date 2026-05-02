@@ -34,6 +34,11 @@ pip install -U pip
 # pip install -r requirements.txt
 ```
 
+### 3) Configure and build C++ engine (Linux/macOS shell)
+```bash
+./scripts/build_engine.sh
+```
+
 ### 3) Configure and build C++ components (placeholder)
 ```powershell
 cmake -S . -B build -G "Ninja"

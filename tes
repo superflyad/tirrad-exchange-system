@@ -114,8 +114,14 @@ run_sim_cli() {
     fi
   done
 
-  PYTHONPATH="${module_path}${PYTHONPATH:+:${PYTHONPATH}}" \
-    "${pybin}" -m sim.tes_cli.cli sim "$@"
+  local SCRIPT_DIR
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  export PYTHONPATH="${SCRIPT_DIR}:${PYTHONPATH:-}"
+  if [[ -n "${module_path}" ]]; then
+    export PYTHONPATH="${module_path}:${PYTHONPATH}"
+  fi
+
+  "${pybin}" -m sim.tes_cli.cli "$@"
 }
 
 cmd="${1:-}"
@@ -151,7 +157,6 @@ case "$cmd" in
     cmake --list-presets
     ;;
   sim)
-    shift
     run_sim_cli "$@"
     ;;
   ""|-h|--help|help)

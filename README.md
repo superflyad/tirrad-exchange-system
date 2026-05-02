@@ -103,6 +103,14 @@ If neither is available, configure fails with an explicit installation hint.
 ./tes check debug-ninja
 ./tes check debug-msvc
 
+# Python bindings checks
+# - Windows Git Bash/MSYS: release-msvc-python (Release + import smoke test)
+# - Linux/Codex:            debug-ninja-python (import smoke test)
+./tes check python
+
+# Force the python-release flow
+./tes check python-release
+
 # Remove generated build tree
 ./tes clean
 ```
@@ -112,3 +120,8 @@ If neither is available, configure fails with an explicit installation hint.
 # pytest -q
 # ctest --test-dir build --output-on-failure
 ```
+
+
+### Windows Python bindings note
+
+On Windows/MSVC, run Python binding import checks in `Release` unless you are explicitly using a debug Python runtime. Debug-built extension modules can fail to import with standard release Python interpreters.

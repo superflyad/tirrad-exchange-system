@@ -25,6 +25,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+engine/CMakeSettings.json
+
+# Visual Studio Code
+.vscode/
+.vs/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

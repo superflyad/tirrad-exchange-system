@@ -11,7 +11,7 @@ IS_WINDOWS = sys.platform.startswith("win")
 
 
 def _run_tes(*args: str) -> subprocess.CompletedProcess[str]:
-    command = [sys.executable, str(TES_SCRIPT), *args] if IS_WINDOWS else [str(TES_SCRIPT), *args]
+    command = ["bash", str(TES_SCRIPT), *args] if IS_WINDOWS else [str(TES_SCRIPT), *args]
     return subprocess.run(
         command,
         cwd=REPO_ROOT,

@@ -79,7 +79,8 @@ run_python_check() {
   fi
 
   echo "[TES] Python import smoke test from ${module_path}"
-  "${pybin}" -c "import sys; sys.path.insert(0, r'${module_path}'); import tes_engine; print('import ok'); print(tes_engine.MatchingEngine())"
+  PYTHONPATH="${module_path}${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${pybin}" -m pytest -q sim/tests/test_tes_engine_smoke.py
 }
 
 usage() {

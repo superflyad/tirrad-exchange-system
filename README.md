@@ -80,6 +80,23 @@ When `TES_BUILD_PYTHON_BINDINGS=ON`, CMake discovers `pybind11` in this order:
 2. Preinstalled `pybind11` package discoverable by `find_package(pybind11 CONFIG ...)`.
 
 If neither is available, configure fails with an explicit installation hint.
+### 3c) Use the TES wrapper command (recommended)
+```bash
+# Show available configure presets
+./tes presets
+
+# Run configure + build + test with default preset
+# - Windows Git Bash/MSYS: debug-msvc
+# - Linux/Codex:            debug-ninja
+./tes check
+
+# Run with an explicit preset
+./tes check debug-ninja
+./tes check debug-msvc
+
+# Remove generated build tree
+./tes clean
+```
 
 ### 4) Run tests/checks (placeholder)
 ```powershell

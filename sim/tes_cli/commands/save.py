@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sim.tes_models.commands import LimitOrderCommand
+from sim.tes_persistence.runs import save_run
+from sim.tes_run.ids import create_run_id, validate_run_id
+from sim.tes_simulation.results import build_run_record
+from sim.tes_simulation.runner import run_simulation
+
 DEFAULT_RUNS_DIR = Path("out") / "runs"
 
 
-def run_save_command(base_dir: Path = DEFAULT_RUNS_DIR) -> Path:
-    """Run the demo simulation, persist the run, and return the run directory."""
+def run_save_command(base_dir: Path = DEFAULT_RUNS_DIR, run_id: str | None = None) -> Path:
+    """Run a deterministic demo simulation, persist the run, and return the run directory."""
     import tes_engine
-
-    from sim.tes_models.commands import LimitOrderCommand
-    from sim.tes_persistence.runs import save_run
-    from sim.tes_run import create_run_id
-    from sim.tes_simulation.results import build_run_record
-    from sim.tes_simulation.runner import run_simulation
 
     engine = tes_engine.MatchingEngine()
     commands = [
@@ -22,9 +22,10 @@ def run_save_command(base_dir: Path = DEFAULT_RUNS_DIR) -> Path:
     ]
 
     result = run_simulation(engine=engine, commands=commands)
-    run_id = create_run_id(prefix="sim")
+    resolved_run_id = validate_run_id(run_id) if run_id is not None else create_run_id(prefix="sim")
+
     run_record = build_run_record(
-        run_id=run_id,
+        run_id=resolved_run_id,
         events=result.events,
         total_commands=result.total_commands,
     )
@@ -43,10 +44,9 @@ def run_save_command(base_dir: Path = DEFAULT_RUNS_DIR) -> Path:
     run_dir = save_run(
         base_dir=base_dir,
         run_id=run_record.run_id,
-        events=result.events,
+        events=run_record.events,
         metadata=metadata,
     )
 
-    print("Run saved:")
-    print(run_dir)
+    print(f"Run saved: {run_dir}")
     return run_dir

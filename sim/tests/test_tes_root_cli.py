@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TES_SCRIPT = REPO_ROOT / "tes"
+IS_WINDOWS = sys.platform.startswith("win")
 
 
 def _run_tes(*args: str) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(TES_SCRIPT), *args] if IS_WINDOWS else [str(TES_SCRIPT), *args]
     return subprocess.run(
-        [str(TES_SCRIPT), *args],
+        command,
         cwd=REPO_ROOT,
         text=True,
         capture_output=True,

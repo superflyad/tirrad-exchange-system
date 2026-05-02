@@ -89,7 +89,84 @@ Usage:
   ./${SCRIPT_NAME} check [preset|python|python-release]
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
+  ./${SCRIPT_NAME} sim <command>
 USAGE
+}
+
+run_sim_cli() {
+  local pybin
+  pybin="$(command -v python3 || command -v python)"
+  if [[ -z "${pybin}" ]]; then
+    echo "python3/python not found in PATH" >&2
+    exit 1
+  fi
+
+  local module_path=""
+  local candidate
+  for candidate in \
+    "out/build/debug-ninja-python/engine" \
+    "out/build/release-ninja-python/engine" \
+    "out/build/release-msvc-python/engine/Release"
+  do
+    if [[ -d "${candidate}" ]]; then
+      module_path="${candidate}"
+      break
+    fi
+  done
+
+  PYTHONPATH="${module_path}${PYTHONPATH:+:${PYTHONPATH}}" \
+    "${pybin}" - "$@" <<'PY'
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from sim.tes_cli.commands.demo import add_demo_command
+from sim.tes_cli.commands.inspect import handle_inspect
+from sim.tes_cli.commands.replay import replay_saved_run
+from sim.tes_cli.commands.save import run_save_command
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="tes")
+    subparsers = parser.add_subparsers(dest="command")
+    sim_parser = subparsers.add_parser("sim")
+    sim_subparsers = sim_parser.add_subparsers(dest="sim_command")
+    add_demo_command(sim_subparsers)
+
+    save_parser = sim_subparsers.add_parser("save")
+    save_parser.add_argument("--run-id", default=None)
+    save_parser.add_argument("--runs-dir", default="out/runs")
+    save_parser.set_defaults(handler=lambda args: _handle_save(args.runs_dir, args.run_id))
+
+    inspect_parser = sim_subparsers.add_parser("inspect")
+    inspect_parser.add_argument("run_id")
+    inspect_parser.add_argument("--runs-dir", default="out/runs")
+    inspect_parser.set_defaults(handler=handle_inspect)
+
+    replay_parser = sim_subparsers.add_parser("replay")
+    replay_parser.add_argument("run_id")
+    replay_parser.add_argument("--runs-dir", default="out/runs")
+    replay_parser.set_defaults(
+        handler=lambda args: replay_saved_run(run_id=args.run_id, base_dir=Path(args.runs_dir))
+    )
+
+    args = parser.parse_args(["sim", *argv])
+    handler = getattr(args, "handler", None)
+    if handler is None:
+        parser.print_help()
+        return 0
+    return int(handler(args))
+
+
+def _handle_save(runs_dir: str, run_id: str | None) -> int:
+    run_save_command(base_dir=Path(runs_dir), run_id=run_id)
+    return 0
+
+
+raise SystemExit(main(sys.argv[1:]))
+PY
 }
 
 cmd="${1:-}"
@@ -117,6 +194,10 @@ case "$cmd" in
   presets)
     echo "[TES] List CMake presets"
     cmake --list-presets
+    ;;
+  sim)
+    shift
+    run_sim_cli "$@"
     ;;
   ""|-h|--help|help)
     usage

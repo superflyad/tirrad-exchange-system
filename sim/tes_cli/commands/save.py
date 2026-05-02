@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import tes_engine
@@ -10,8 +11,10 @@ from sim.tes_persistence.runs import save_run
 from sim.tes_run import create_run_id
 from sim.tes_simulation.runner import run_simulation
 
+_DEFAULT_RUNS_DIR = Path("out") / "runs"
 
-def run_save_command(base_dir: Path) -> Path:
+
+def run_save_command(base_dir: Path = _DEFAULT_RUNS_DIR) -> Path:
     """Run the demo simulation and persist it to a generated run directory."""
     engine = tes_engine.MatchingEngine()
     commands = [
@@ -33,3 +36,9 @@ def run_save_command(base_dir: Path) -> Path:
     print("Run saved:")
     print(run_dir)
     return run_dir
+
+
+def handle_save(_args: argparse.Namespace) -> int:
+    """CLI handler for `./tes sim save`."""
+    run_save_command()
+    return 0

@@ -47,7 +47,7 @@ cmake --build build --config Release
 
 ### 3b) Configure and build with CMake presets (cross-platform)
 ```bash
-# Shared Bash / Codex (Linux + Windows Git Bash)
+# Engine-only build (default, no Python bindings)
 cmake --preset debug-ninja
 cmake --build --preset debug-ninja
 ctest --preset debug-ninja
@@ -56,7 +56,39 @@ ctest --preset debug-ninja
 cmake --preset debug-msvc
 cmake --build --preset debug-msvc --config Debug
 ctest --test-dir out/build/debug-msvc -C Debug --output-on-failure
+
+# Python bindings build (optional path)
+python3 -m pip install --user pybind11
+cmake --preset debug-ninja-python
+cmake --build --preset debug-ninja-python
+
+# Windows Visual Studio / MSVC + Python bindings
+py -3.11 -m pip install --user pybind11
+cmake --preset debug-msvc-python
+cmake --build --preset debug-msvc-python --config Debug
+
+# Prefer the active shell Python when multiple Python versions are installed
+cmake --preset debug-msvc-python ^
+  -DPython3_EXECUTABLE="$(Get-Command python).Source" ^
+  -Dpybind11_DIR="$(python -m pybind11 --cmakedir)"
+
+# Or use the helper script
+./scripts/configure_python_bindings.ps1 -Preset debug-msvc-python
+cmake --build --preset debug-msvc-python --config Debug
+
+# If MSBuild cannot open pythonXY.lib, pass explicit Python/pybind11 paths
+cmake --preset debug-msvc-python ^
+  -DPython3_EXECUTABLE="C:/Program Files/Python313/python.exe" ^
+  -DPython3_INCLUDE_DIR="C:/Program Files/Python313/Include" ^
+  -DPython3_LIBRARY="C:/Program Files/Python313/libs/python313.lib" ^
+  -Dpybind11_DIR="<pybind11 cmake dir>"
 ```
+
+When `TES_BUILD_PYTHON_BINDINGS=ON`, CMake discovers `pybind11` in this order:
+1. Vendored source at `engine/third_party/pybind11`.
+2. Preinstalled `pybind11` package discoverable by `find_package(pybind11 CONFIG ...)`.
+
+If neither is available, configure fails with an explicit installation hint.
 
 ### 4) Run tests/checks (placeholder)
 ```powershell

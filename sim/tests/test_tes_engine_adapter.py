@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import pytest
+
+from sim.tes_engine_adapter import execute_command, execute_commands
+from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand
+
+
+def test_execute_limit_order_command_returns_models() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    command = LimitOrderCommand(side="BUY", price=100, qty=10)
+
+    events = execute_command(engine, command)
+
+    assert any(event.type == "OrderAccepted" for event in events)
+
+
+def test_non_crossing_limit_order_includes_order_accepted() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=10))
+
+    assert any(event.type == "OrderAccepted" for event in events)
+
+
+def test_crossing_two_limit_orders_produces_trade_executed() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=10))
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5))
+
+    assert any(event.type == "TradeExecuted" for event in events)
+
+
+def test_cancel_command_produces_order_canceled() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    accepted_events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=10))
+    accepted = next(event for event in accepted_events if event.type == "OrderAccepted")
+
+    cancel_events = execute_command(engine, CancelOrderCommand(order_id=accepted.data.order_id))
+
+    assert any(event.type == "OrderCanceled" for event in cancel_events)
+
+
+def test_execute_commands_aggregates_events() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    commands = [
+        LimitOrderCommand(side="SELL", price=100, qty=10),
+        LimitOrderCommand(side="BUY", price=100, qty=5),
+    ]
+    events = execute_commands(engine, commands)
+
+    assert any(event.type == "OrderAccepted" for event in events)
+    assert any(event.type == "TradeExecuted" for event in events)
+
+
+def test_execute_command_rejects_unknown_command_type() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+
+    with pytest.raises(TypeError):
+        execute_command(engine, object())  # type: ignore[arg-type]

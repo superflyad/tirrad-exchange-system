@@ -55,6 +55,7 @@ if(TES_BUILD_PYTHON_BINDINGS)
         add_subdirectory(third_party/pybind11)
     else()
         find_package(pybind11 CONFIG QUIET)
+
         if(NOT pybind11_FOUND)
             execute_process(
                 COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
@@ -72,10 +73,12 @@ if(TES_BUILD_PYTHON_BINDINGS)
         if(NOT pybind11_FOUND)
             message(FATAL_ERROR
                 "TES_BUILD_PYTHON_BINDINGS=ON but pybind11 was not found. "
-                "Install pybind11 (for example: 'python3 -m pip install --user pybind11') "
+                "Install pybind11 using the same Python selected by CMake "
+                "(for example: 'python -m pip install pybind11') "
                 "or vendor it at engine/third_party/pybind11."
             )
         endif()
+
         message(STATUS "Using pybind11 from system/Python installation")
     endif()
 
@@ -90,27 +93,21 @@ if(TES_BUILD_PYTHON_BINDINGS)
 
     if(TARGET Python3::Module)
         target_link_libraries(tes_engine_python PRIVATE Python3::Module)
+        message(STATUS "Python library selected: Python3::Module")
     elseif(TARGET Python3::Python)
         target_link_libraries(tes_engine_python PRIVATE Python3::Python)
+        message(STATUS "Python library selected: Python3::Python")
+    else()
+        message(STATUS "Python library selected: managed by pybind11")
     endif()
 
-    if(WIN32 AND MSVC)
-        set(TES_PYTHON_LINK_LIBRARIES "")
-        if(DEFINED Python3_LIBRARY AND Python3_LIBRARY)
-            list(APPEND TES_PYTHON_LINK_LIBRARIES "${Python3_LIBRARY}")
-        elseif(DEFINED Python3_LIBRARIES AND Python3_LIBRARIES)
-            list(APPEND TES_PYTHON_LINK_LIBRARIES ${Python3_LIBRARIES})
-        endif()
+    if(WIN32 AND MSVC AND Python3_LIBRARY_DIRS)
+        target_link_directories(tes_engine_python
+            PRIVATE
+                ${Python3_LIBRARY_DIRS}
+        )
 
-        if(TES_PYTHON_LINK_LIBRARIES)
-            target_link_libraries(tes_engine_python PRIVATE ${TES_PYTHON_LINK_LIBRARIES})
-            message(STATUS "Windows/MSVC Python import library path(s): ${TES_PYTHON_LINK_LIBRARIES}")
-        else()
-            message(WARNING
-                "Windows/MSVC Python import library path was not provided by CMake. "
-                "If linking fails, pass -DPython3_LIBRARY=<full path to pythonXY.lib>."
-            )
-        endif()
+        message(STATUS "Windows/MSVC Python library directories: ${Python3_LIBRARY_DIRS}")
     endif()
 
     target_include_directories(tes_engine_python
@@ -120,15 +117,8 @@ if(TES_BUILD_PYTHON_BINDINGS)
 
     set_target_properties(tes_engine_python PROPERTIES
         OUTPUT_NAME tes_engine
+        ARCHIVE_OUTPUT_NAME tes_engine_python_import
     )
-
-    if(DEFINED Python3_LIBRARY AND Python3_LIBRARY)
-        message(STATUS "Python library selected: ${Python3_LIBRARY}")
-    elseif(DEFINED Python3_LIBRARIES AND Python3_LIBRARIES)
-        message(STATUS "Python libraries selected: ${Python3_LIBRARIES}")
-    else()
-        message(STATUS "Python library selected: managed via Python3 target only")
-    endif()
 
     message(STATUS "Python bindings enabled: tes_engine module")
 endif()

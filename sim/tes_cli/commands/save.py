@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 DEFAULT_RUNS_DIR = Path("out") / "runs"
@@ -51,9 +50,3 @@ def run_save_command(base_dir: Path = DEFAULT_RUNS_DIR) -> Path:
     print("Run saved:")
     print(run_dir)
     return run_dir
-
-
-def handle_save(_args: argparse.Namespace) -> int:
-    """CLI handler for `./tes sim save`."""
-    run_save_command()
-    return 0

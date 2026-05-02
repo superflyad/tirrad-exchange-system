@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,6 +30,13 @@ def _install_fake_engine_module(monkeypatch) -> None:
 
 def test_run_save_command_creates_run_directory_with_expected_files(tmp_path: Path, monkeypatch) -> None:
     _install_fake_engine_module(monkeypatch)
+def _install_fake_engine_module() -> None:
+    sys.modules["tes_engine"] = SimpleNamespace(MatchingEngine=_FakeMatchingEngine)
+
+
+def test_run_save_command_creates_run_directory(tmp_path: Path) -> None:
+    _install_fake_engine_module()
+
     run_dir = run_save_command(base_dir=tmp_path)
 
     assert run_dir.exists()
@@ -43,3 +51,12 @@ def test_run_save_command_prints_saved_path(tmp_path: Path, capsys, monkeypatch)
 
     captured = capsys.readouterr()
     assert captured.out == f"Run saved:\n{run_dir}\n"
+
+
+def test_run_save_command_writes_events_and_metadata_files(tmp_path: Path) -> None:
+    _install_fake_engine_module()
+
+    run_dir = run_save_command(base_dir=tmp_path)
+
+    assert (run_dir / "events.jsonl").exists()
+    assert (run_dir / "metadata.json").exists()

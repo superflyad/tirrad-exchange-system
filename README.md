@@ -52,7 +52,7 @@ cmake --preset debug-ninja
 cmake --build --preset debug-ninja
 ctest --preset debug-ninja
 
-# Windows Visual Studio / MSVC
+# Windows Visual Studio / MSVC (Visual Studio 2026, generator "Visual Studio 18 2026")
 cmake --preset debug-msvc
 cmake --build --preset debug-msvc --config Debug
 ctest --test-dir out/build/debug-msvc -C Debug --output-on-failure

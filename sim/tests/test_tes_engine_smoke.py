@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
-
-def _event_types(events: list[dict[str, Any]]) -> list[str]:
-    return [str(event.get("type")) for event in events]
+from sim.tes_models.events import parse_events
 
 
 def test_import_works() -> None:
@@ -22,33 +18,39 @@ def test_non_crossing_limit_order_returns_order_accepted() -> None:
     import tes_engine
 
     engine = tes_engine.MatchingEngine()
-    events = engine.place_limit_order(side="Bid", price_ticks=100, qty=10)
+    raw_events = engine.place_limit_order(side="Bid", price_ticks=100, qty=10)
+    events = parse_events(raw_events)
 
-    assert "OrderAccepted" in _event_types(events)
+    assert any(event.type == "OrderAccepted" for event in events)
 
 
 def test_crossing_orders_produce_trade_executed() -> None:
     import tes_engine
 
     engine = tes_engine.MatchingEngine()
-    resting_events = engine.place_limit_order(side="Ask", price_ticks=100, qty=10)
-    assert "OrderAccepted" in _event_types(resting_events)
+    resting_raw = engine.place_limit_order(side="Ask", price_ticks=100, qty=10)
+    resting_events = parse_events(resting_raw)
+    assert any(event.type == "OrderAccepted" for event in resting_events)
 
-    crossing_events = engine.place_limit_order(side="Bid", price_ticks=105, qty=5)
-    assert "TradeExecuted" in _event_types(crossing_events)
+    crossing_raw = engine.place_limit_order(side="Bid", price_ticks=105, qty=5)
+    crossing_events = parse_events(crossing_raw)
+    trade_events = [event for event in crossing_events if event.type == "TradeExecuted"]
+
+    assert trade_events
+    assert trade_events[0].data.price == 100
+    assert trade_events[0].data.qty == 5
 
 
 def test_cancel_returns_order_canceled_for_accepted_order() -> None:
     import tes_engine
 
     engine = tes_engine.MatchingEngine()
-    accepted_events = engine.place_limit_order(side="Bid", price_ticks=100, qty=10)
+    accepted_raw = engine.place_limit_order(side="Bid", price_ticks=100, qty=10)
+    accepted_events = parse_events(accepted_raw)
 
-    accepted = next(
-        (event for event in accepted_events if event.get("type") == "OrderAccepted"),
-        None,
-    )
+    accepted = next((event for event in accepted_events if event.type == "OrderAccepted"), None)
     assert accepted is not None
 
-    cancel_events = engine.cancel(order_id=int(accepted["id"]))
-    assert "OrderCanceled" in _event_types(cancel_events)
+    cancel_raw = engine.cancel(order_id=accepted.data.order_id)
+    cancel_events = parse_events(cancel_raw)
+    assert any(event.type == "OrderCanceled" for event in cancel_events)

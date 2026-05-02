@@ -18,9 +18,9 @@ namespace {
 
 [[nodiscard]] std::string side_to_string(tes::Side side) {
     if (side == tes::Side::Bid) {
-        return "Bid";
+        return "BUY";
     }
-    return "Ask";
+    return "SELL";
 }
 
 [[nodiscard]] tes::Side side_from_string(const std::string& side) {
@@ -33,7 +33,7 @@ namespace {
     throw std::invalid_argument("side must be either 'Bid' or 'Ask'");
 }
 
-[[nodiscard]] py::dict event_to_dict(const tes::Event& event) {
+[[nodiscard]] py::dict event_to_py(const tes::Event& event) {
     return std::visit(
         [](const auto& evt) -> py::dict {
             using T = std::decay_t<decltype(evt)>;
@@ -41,38 +41,45 @@ namespace {
             if constexpr (std::is_same_v<T, tes::OrderAccepted>) {
                 py::dict out;
                 out["type"] = "OrderAccepted";
-                out["id"] = evt.id;
-                out["side"] = side_to_string(evt.side);
-                out["price_ticks"] = evt.price.ticks;
-                out["qty"] = evt.qty.value;
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["side"] = side_to_string(evt.side);
+                data["price"] = evt.price.ticks;
+                data["qty"] = evt.qty.value;
+                out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderCanceled>) {
                 py::dict out;
                 out["type"] = "OrderCanceled";
-                out["id"] = evt.id;
+                py::dict data;
+                data["order_id"] = evt.id;
+                out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::TradeExecuted>) {
                 py::dict out;
                 out["type"] = "TradeExecuted";
-                out["taker_id"] = evt.taker_id;
-                out["maker_id"] = evt.maker_id;
-                out["taker_side"] = side_to_string(evt.taker_side);
-                out["price_ticks"] = evt.price.ticks;
-                out["qty"] = evt.qty.value;
+                py::dict data;
+                data["price"] = evt.price.ticks;
+                data["qty"] = evt.qty.value;
+                data["maker_order_id"] = evt.maker_id;
+                data["taker_order_id"] = evt.taker_id;
+                out["data"] = data;
                 return out;
             } else {
                 py::dict out;
                 out["type"] = "TopOfBook";
+                py::dict data;
                 if (evt.best_bid.has_value()) {
-                    out["best_bid_ticks"] = evt.best_bid->ticks;
+                    data["best_bid"] = evt.best_bid->ticks;
                 } else {
-                    out["best_bid_ticks"] = py::none();
+                    data["best_bid"] = py::none();
                 }
                 if (evt.best_ask.has_value()) {
-                    out["best_ask_ticks"] = evt.best_ask->ticks;
+                    data["best_ask"] = evt.best_ask->ticks;
                 } else {
-                    out["best_ask_ticks"] = py::none();
+                    data["best_ask"] = py::none();
                 }
+                out["data"] = data;
                 return out;
             }
         },
@@ -83,7 +90,7 @@ namespace {
     std::vector<py::dict> out;
     out.reserve(events.size());
     for (const tes::Event& event : events) {
-        out.emplace_back(event_to_dict(event));
+        out.emplace_back(event_to_py(event));
     }
     return out;
 }

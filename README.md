@@ -45,6 +45,19 @@ cmake -S . -B build -G "Ninja"
 cmake --build build --config Release
 ```
 
+### 3b) Configure and build with CMake presets (cross-platform)
+```bash
+# Linux / Codex
+cmake --preset debug-ninja
+cmake --build --preset debug-ninja
+ctest --preset debug-ninja
+
+# Windows / MSVC
+cmake --preset debug-msvc
+cmake --build --preset debug-msvc --config Debug
+ctest --test-dir out/build/debug-msvc -C Debug --output-on-failure
+```
+
 ### 4) Run tests/checks (placeholder)
 ```powershell
 # pytest -q

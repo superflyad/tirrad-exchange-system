@@ -1,0 +1,44 @@
+name: Remove Codex Label
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  remove-codex-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove codex label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labelName = "codex";
+            const labels = context.payload.pull_request.labels.map((label) => label.name);
+
+            if (!labels.includes(labelName)) {
+              core.info(`Label "${labelName}" is not present; nothing to remove.`);
+              return;
+            }
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: labelName,
+              });
+
+              core.info(`Removed label "${labelName}".`);
+            } catch (error) {
+              if (error.status === 404) {
+                core.info(`Label "${labelName}" was already absent.`);
+                return;
+              }
+
+              throw error;
+            }

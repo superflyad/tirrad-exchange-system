@@ -5,6 +5,7 @@ def test_trade_executed_event_emitted() -> None:
     import tes_engine
 
     engine = tes_engine.MatchingEngine()
+    assert engine is not None
 
     resting_events = engine.place_limit_order(side="Ask", price_ticks=100, qty=10)
     assert any(event["type"] == "OrderAccepted" for event in resting_events)

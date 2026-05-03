@@ -426,3 +426,63 @@ TEST_CASE("depth obeys level limit and zero levels") {
     CHECK(zero.bids.empty());
     CHECK(zero.asks.empty());
 }
+
+TEST_CASE("fok full fill across one level") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{10});
+
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{10}, tes::TimeInForce::Fok);
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 10);
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("fok full fill across multiple levels") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{2});
+
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{5}, tes::TimeInForce::Fok);
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 2);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[1].price.ticks == 101);
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("fok insufficient quantity does not mutate book") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{4});
+
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Fok);
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(events[0]));
+
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 100);
+    const std::optional<tes::Order> front = engine.book().front_of_level(tes::Side::Ask, tes::Price{100});
+    REQUIRE(front.has_value());
+    CHECK(front->qty.value == 4);
+}
+
+TEST_CASE("fok respects limit price") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{3});
+
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{4}, tes::TimeInForce::Fok);
+    REQUIRE(events.size() == 1);
+    CHECK(std::holds_alternative<tes::OrderCanceled>(events[0]));
+
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 100);
+    CHECK(engine.book().level_size(tes::Side::Ask, tes::Price{100}) == 1);
+    CHECK(engine.book().level_size(tes::Side::Ask, tes::Price{101}) == 1);
+}

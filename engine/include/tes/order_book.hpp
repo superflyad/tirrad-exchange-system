@@ -137,6 +137,32 @@ class OrderBook {
         return fill_best_from_levels(asks, qty);
     }
 
+    [[nodiscard]] Qty executable_qty(Side taker_side, Price limit_price) const {
+        Qty available{0};
+
+        if (taker_side == Side::Bid) {
+            for (const auto& [price, orders] : asks) {
+                if (price.ticks > limit_price.ticks) {
+                    break;
+                }
+                for (const Order& order : orders) {
+                    available.value += order.qty.value;
+                }
+            }
+            return available;
+        }
+
+        for (const auto& [price, orders] : bids) {
+            if (price.ticks < limit_price.ticks) {
+                break;
+            }
+            for (const Order& order : orders) {
+                available.value += order.qty.value;
+            }
+        }
+        return available;
+    }
+
     [[nodiscard]] Depth depth(std::size_t levels) const {
         Depth snapshot;
         if (levels == 0) {

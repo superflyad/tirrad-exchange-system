@@ -63,16 +63,16 @@ def test_run_crossing_taker(capsys: pytest.CaptureFixture[str]) -> None:
     reason="tes_engine extension not available",
 )
 def test_run_crossing_taker_verbose_output(capsys: pytest.CaptureFixture[str]) -> None:
-    returncode = handle_run(
-        argparse.Namespace(strategy="crossing_taker", verbose=True, depth_levels=5)
-    )
+    returncode = main(["sim", "run", "--strategy", "crossing_taker", "--verbose"])
 
     out = capsys.readouterr().out
     assert returncode == 0
+    assert "TES Strategy Run" in out
     assert "OrderAccepted" in out
     assert "TradeExecuted" in out
     assert "Total Traded Qty" in out
     assert "Traded Notional" in out
+    assert ("Book Depth" in out) or ("<unavailable>" in out)
 
 
 @pytest.mark.skipif(

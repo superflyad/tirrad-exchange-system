@@ -8,6 +8,8 @@ namespace tes {
 using OrderId = std::uint64_t;
 
 enum class Side { Bid, Ask };
+enum class OrderType { Limit, Market };
+enum class TimeInForce { Gtc, Ioc, Fok };
 
 struct Price {
     std::int64_t ticks;

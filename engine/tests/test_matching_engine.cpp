@@ -244,6 +244,75 @@ TEST_CASE("fully filled incoming order does not rest after sweeping multiple lev
     CHECK_FALSE(find_order_accepted(events).has_value());
     CHECK_FALSE(engine.book().best_ask().has_value());
     CHECK_FALSE(engine.book().best_bid().has_value());
+TEST_CASE("invalid price order is ignored") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Bid, tes::Price{-1}, tes::Qty{5});
+
+    CHECK(events.empty());
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("invalid quantity order is ignored") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> zero_qty_events =
+        engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{0});
+    const std::vector<tes::Event> negative_qty_events =
+        engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{-3});
+
+    CHECK(zero_qty_events.empty());
+    CHECK(negative_qty_events.empty());
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("cancel unknown order id returns no events") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> events = engine.cancel(999);
+
+    CHECK(events.empty());
+}
+
+TEST_CASE("cancel already canceled order id returns no events") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+
+    const std::vector<tes::Event> first_cancel = engine.cancel(1);
+    const std::vector<tes::Event> second_cancel = engine.cancel(1);
+
+    REQUIRE(first_cancel.size() == 2);
+    CHECK(std::holds_alternative<tes::OrderCanceled>(first_cancel[0]));
+    CHECK(std::holds_alternative<tes::TopOfBook>(first_cancel[1]));
+    CHECK(second_cancel.empty());
+}
+
+TEST_CASE("cancel fully filled order id returns no events") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    const std::vector<tes::Event> trade_events = engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5});
+    REQUIRE(collect_trades(trade_events).size() == 1);
+
+    const std::vector<tes::Event> cancel_events = engine.cancel(1);
+    CHECK(cancel_events.empty());
+}
+
+TEST_CASE("cancel non-best order does not mutate top of book") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+
+    const std::vector<tes::Event> cancel_events = engine.cancel(2);
+    REQUIRE(cancel_events.size() == 1);
+    CHECK(std::holds_alternative<tes::OrderCanceled>(cancel_events[0]));
+
+    REQUIRE(engine.book().best_bid().has_value());
+    CHECK(engine.book().best_bid()->ticks == 101);
+    CHECK_FALSE(engine.book().best_ask().has_value());
 TEST_CASE("depth on empty book is empty") {
     tes::MatchingEngine engine;
 

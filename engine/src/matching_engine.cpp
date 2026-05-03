@@ -21,7 +21,7 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
     if (tif == TimeInForce::Fok) {
         const Qty available = book_.executable_qty(side, price);
         if (available.value < qty.value) {
-            events.emplace_back(OrderCanceled{taker_id});
+            events.emplace_back(OrderExpired{taker_id});
             return events;
         }
     }
@@ -45,6 +45,11 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
 
             remaining.value -= fill->qty.value;
             events.emplace_back(TradeExecuted{taker_id, fill->maker_id, side, fill->price, fill->qty});
+            if (remaining.value > 0) {
+                events.emplace_back(OrderPartiallyFilled{taker_id, fill->qty, Qty{remaining.value}});
+            } else {
+                events.emplace_back(OrderFilled{taker_id, fill->qty});
+            }
             maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
             continue;
         }
@@ -61,12 +66,17 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
 
         remaining.value -= fill->qty.value;
         events.emplace_back(TradeExecuted{taker_id, fill->maker_id, side, fill->price, fill->qty});
+        if (remaining.value > 0) {
+            events.emplace_back(OrderPartiallyFilled{taker_id, fill->qty, Qty{remaining.value}});
+        } else {
+            events.emplace_back(OrderFilled{taker_id, fill->qty});
+        }
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
     }
 
     if (remaining.value > 0) {
         if (tif == TimeInForce::Ioc) {
-            events.emplace_back(OrderCanceled{taker_id});
+            events.emplace_back(OrderExpired{taker_id});
         } else {
             const std::vector<Event> rest_events =
                 book_.add_limit_order(Order{taker_id, side, price, Qty{remaining.value}});
@@ -103,6 +113,11 @@ std::vector<Event> MatchingEngine::place_market_order(Side side, Qty qty) {
 
         remaining.value -= fill->qty.value;
         events.emplace_back(TradeExecuted{taker_id, fill->maker_id, side, fill->price, fill->qty});
+        if (remaining.value > 0) {
+            events.emplace_back(OrderPartiallyFilled{taker_id, fill->qty, Qty{remaining.value}});
+        } else {
+            events.emplace_back(OrderFilled{taker_id, fill->qty});
+        }
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
     }
 

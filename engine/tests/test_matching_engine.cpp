@@ -527,7 +527,7 @@ TEST_CASE("fok insufficient quantity does not mutate book") {
     const std::vector<tes::Event> events =
         engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Fok);
     REQUIRE(events.size() == 1);
-    REQUIRE(std::holds_alternative<tes::OrderCanceled>(events[0]));
+    REQUIRE(std::holds_alternative<tes::OrderExpired>(events[0]));
 
     REQUIRE(engine.book().best_ask().has_value());
     CHECK(engine.book().best_ask()->ticks == 100);
@@ -544,7 +544,7 @@ TEST_CASE("fok respects limit price") {
     const std::vector<tes::Event> events =
         engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{4}, tes::TimeInForce::Fok);
     REQUIRE(events.size() == 1);
-    CHECK(std::holds_alternative<tes::OrderCanceled>(events[0]));
+    CHECK(std::holds_alternative<tes::OrderExpired>(events[0]));
 
     REQUIRE(engine.book().best_ask().has_value());
     CHECK(engine.book().best_ask()->ticks == 100);
@@ -581,7 +581,7 @@ TEST_CASE("ioc partial fill cancels remainder without resting") {
 
     bool saw_cancel = false;
     for (const tes::Event& event : events) {
-        if (std::holds_alternative<tes::OrderCanceled>(event)) {
+        if (std::holds_alternative<tes::OrderExpired>(event)) {
             saw_cancel = true;
         }
     }
@@ -600,7 +600,7 @@ TEST_CASE("ioc no fill does not rest") {
     CHECK(collect_trades(events).empty());
     CHECK_FALSE(find_order_accepted(events).has_value());
     REQUIRE(events.size() == 1);
-    CHECK(std::holds_alternative<tes::OrderCanceled>(events[0]));
+    CHECK(std::holds_alternative<tes::OrderExpired>(events[0]));
     CHECK_FALSE(engine.book().best_bid().has_value());
     REQUIRE(engine.book().best_ask().has_value());
     CHECK(engine.book().best_ask()->ticks == 105);

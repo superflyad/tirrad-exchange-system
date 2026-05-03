@@ -35,6 +35,21 @@ def test_parse_trade_executed() -> None:
     assert event.type == "TradeExecuted"
 
 
+def test_parse_order_partially_filled() -> None:
+    event = parse_event({"type": "OrderPartiallyFilled", "data": {"order_id": 11, "last_fill_qty": 3, "remaining_qty": 2}})
+    assert event.type == "OrderPartiallyFilled"
+
+
+def test_parse_order_filled() -> None:
+    event = parse_event({"type": "OrderFilled", "data": {"order_id": 11, "last_fill_qty": 2}})
+    assert event.type == "OrderFilled"
+
+
+def test_parse_order_expired() -> None:
+    event = parse_event({"type": "OrderExpired", "data": {"order_id": 11}})
+    assert event.type == "OrderExpired"
+
+
 def test_parse_top_of_book_with_prices() -> None:
     event = parse_event({"type": "TopOfBook", "data": {"best_bid": 99, "best_ask": 101}})
     assert event.data.best_bid == 99

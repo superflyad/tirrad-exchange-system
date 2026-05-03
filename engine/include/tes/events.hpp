@@ -45,11 +45,27 @@ struct TradeExecuted {
     Qty qty;
 };
 
+struct OrderPartiallyFilled {
+    OrderId id;
+    Qty last_fill_qty;
+    Qty remaining_qty;
+};
+
+struct OrderFilled {
+    OrderId id;
+    Qty last_fill_qty;
+};
+
+struct OrderExpired {
+    OrderId id;
+};
+
 struct TopOfBook {
     std::optional<Price> best_bid;
     std::optional<Price> best_ask;
 };
 
-using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, TopOfBook>;
+using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
+                           OrderFilled, OrderExpired, TopOfBook>;
 
 }  // namespace tes

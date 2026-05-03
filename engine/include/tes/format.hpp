@@ -81,6 +81,21 @@ namespace tes {
                        << "}";
                 return stream.str();
             }
+            else if constexpr (std::is_same_v<T, OrderPartiallyFilled>) {
+                stream << "OrderPartiallyFilled{id=" << value.id
+                       << ", last_fill_qty=" << to_string(value.last_fill_qty)
+                       << ", remaining_qty=" << to_string(value.remaining_qty) << "}";
+                return stream.str();
+            }
+            else if constexpr (std::is_same_v<T, OrderFilled>) {
+                stream << "OrderFilled{id=" << value.id << ", last_fill_qty=" << to_string(value.last_fill_qty)
+                       << "}";
+                return stream.str();
+            }
+            else if constexpr (std::is_same_v<T, OrderExpired>) {
+                stream << "OrderExpired{id=" << value.id << "}";
+                return stream.str();
+            }
 
             else if constexpr (std::is_same_v<T, TopOfBook>) {
                 stream << "TopOfBook{best_bid=";

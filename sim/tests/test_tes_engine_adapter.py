@@ -34,6 +34,7 @@ def test_crossing_two_limit_orders_produces_trade_executed() -> None:
     events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5))
 
     assert any(event.type == "TradeExecuted" for event in events)
+    assert any(event.type == "OrderFilled" for event in events)
 
 
 def test_cancel_command_produces_order_canceled() -> None:

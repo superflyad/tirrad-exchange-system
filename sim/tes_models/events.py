@@ -40,6 +40,24 @@ class TradeExecutedData:
 
 
 @dataclass(frozen=True)
+class OrderPartiallyFilledData:
+    order_id: int
+    last_fill_qty: int
+    remaining_qty: int
+
+
+@dataclass(frozen=True)
+class OrderFilledData:
+    order_id: int
+    last_fill_qty: int
+
+
+@dataclass(frozen=True)
+class OrderExpiredData:
+    order_id: int
+
+
+@dataclass(frozen=True)
 class TopOfBookData:
     best_bid: int | None
     best_ask: int | None
@@ -76,6 +94,24 @@ class TradeExecutedEvent:
 
 
 @dataclass(frozen=True)
+class OrderPartiallyFilledEvent:
+    type: Literal["OrderPartiallyFilled"]
+    data: OrderPartiallyFilledData
+
+
+@dataclass(frozen=True)
+class OrderFilledEvent:
+    type: Literal["OrderFilled"]
+    data: OrderFilledData
+
+
+@dataclass(frozen=True)
+class OrderExpiredEvent:
+    type: Literal["OrderExpired"]
+    data: OrderExpiredData
+
+
+@dataclass(frozen=True)
 class TopOfBookEvent:
     type: Literal["TopOfBook"]
     data: TopOfBookData
@@ -87,6 +123,9 @@ TesEvent: TypeAlias = (
     | OrderCanceledEvent
     | CancelRejectedEvent
     | TradeExecutedEvent
+    | OrderPartiallyFilledEvent
+    | OrderFilledEvent
+    | OrderExpiredEvent
     | TopOfBookEvent
 )
 
@@ -121,9 +160,9 @@ def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     return value
 
 
-def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]:
-    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId"}:
-        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId")
+def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]:
+    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"}:
+        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId, NoLiquidity")
     return value
 
 
@@ -198,6 +237,34 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
                 best_bid=_require_optional_int(data["best_bid"], "best_bid"),
                 best_ask=_require_optional_int(data["best_ask"], "best_ask"),
             ),
+        )
+
+    if event_type == "OrderPartiallyFilled":
+        _require_exact_keys(data, {"order_id", "last_fill_qty", "remaining_qty"}, "OrderPartiallyFilled.data")
+        return OrderPartiallyFilledEvent(
+            type="OrderPartiallyFilled",
+            data=OrderPartiallyFilledData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                last_fill_qty=_require_int(data["last_fill_qty"], "last_fill_qty"),
+                remaining_qty=_require_int(data["remaining_qty"], "remaining_qty"),
+            ),
+        )
+
+    if event_type == "OrderFilled":
+        _require_exact_keys(data, {"order_id", "last_fill_qty"}, "OrderFilled.data")
+        return OrderFilledEvent(
+            type="OrderFilled",
+            data=OrderFilledData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                last_fill_qty=_require_int(data["last_fill_qty"], "last_fill_qty"),
+            ),
+        )
+
+    if event_type == "OrderExpired":
+        _require_exact_keys(data, {"order_id"}, "OrderExpired.data")
+        return OrderExpiredEvent(
+            type="OrderExpired",
+            data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id")),
         )
 
     raise ValueError(f"unknown event type: {event_type}")

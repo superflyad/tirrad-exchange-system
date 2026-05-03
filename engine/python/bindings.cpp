@@ -96,6 +96,30 @@ namespace {
                 data["taker_order_id"] = evt.taker_id;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::OrderPartiallyFilled>) {
+                py::dict out;
+                out["type"] = "OrderPartiallyFilled";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["last_fill_qty"] = evt.last_fill_qty.value;
+                data["remaining_qty"] = evt.remaining_qty.value;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::OrderFilled>) {
+                py::dict out;
+                out["type"] = "OrderFilled";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["last_fill_qty"] = evt.last_fill_qty.value;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::OrderExpired>) {
+                py::dict out;
+                out["type"] = "OrderExpired";
+                py::dict data;
+                data["order_id"] = evt.id;
+                out["data"] = data;
+                return out;
             } else {
                 py::dict out;
                 out["type"] = "TopOfBook";
@@ -180,7 +204,7 @@ PYBIND11_MODULE(tes_engine, m) {
                      self.place_limit_order(parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
                  return events_to_dicts(events);
              },
-             py::arg("side"), py::arg("price_ticks"), py::arg("qty"))
+             py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC")
         .def("place_market_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty) {
                  const tes::Side parsed_side = side_from_string(side);

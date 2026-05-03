@@ -3,12 +3,34 @@
 from __future__ import annotations
 
 import argparse
+from importlib import import_module
 
-import tes_engine
 from sim.tes_models.commands import TesCommand
 from sim.tes_models.events import OrderAcceptedEvent, TradeExecutedEvent
-from sim.tes_simulation.runner import execute_command
 from sim.tes_strategy.registry import get_strategy
+
+
+def _print_book_depth(depth: dict[str, list[dict[str, int]]]) -> None:
+    bids = depth.get("bids", [])
+    asks = depth.get("asks", [])
+
+    print("Book Depth")
+    print("----------")
+    if bids:
+        print("Bids:")
+        for level in bids:
+            print(f"price={level['price']} qty={level['qty']}")
+    else:
+        print("Bids: <empty>")
+
+    print()
+
+    if asks:
+        print("Asks:")
+        for level in asks:
+            print(f"price={level['price']} qty={level['qty']}")
+    else:
+        print("Asks: <empty>")
 
 
 def _format_command(command: TesCommand) -> str:
@@ -54,6 +76,12 @@ def handle_run(args: argparse.Namespace) -> int:
         return 1
 
     verbose = bool(getattr(args, "verbose", False))
+    depth_levels = int(getattr(args, "depth_levels", 5))
+    if depth_levels < 0:
+        print("--depth-levels must be >= 0")
+        return 1
+
+    tes_engine = import_module("tes_engine")
     engine = tes_engine.MatchingEngine()
     all_events: list[object] = []
 
@@ -70,6 +98,8 @@ def handle_run(args: argparse.Namespace) -> int:
 
     while pending_commands:
         command = pending_commands.pop(0)
+        from sim.tes_simulation.runner import execute_command
+
         command_events = execute_command(engine, command)
         all_events.extend(command_events)
 
@@ -81,6 +111,15 @@ def handle_run(args: argparse.Namespace) -> int:
         print("Event Stream:")
         for event in all_events:
             print(f"- {_format_event(event)}")
+
+        print()
+        depth_method = getattr(engine, "depth", None)
+        if depth_method is None:
+            print("Book Depth")
+            print("----------")
+            print("<unavailable>")
+        else:
+            _print_book_depth(depth_method(depth_levels))
 
     trade_events = [event for event in all_events if isinstance(event, TradeExecutedEvent)]
     total_trades = len(trade_events)

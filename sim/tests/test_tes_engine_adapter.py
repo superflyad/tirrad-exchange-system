@@ -135,3 +135,70 @@ def test_market_rejection_is_parsed_with_no_liquidity_reason() -> None:
 
     rejected = next(event for event in events if event.type == "OrderRejected")
     assert rejected.data.reason == "NoLiquidity"
+
+
+def test_ioc_no_fill_expires_without_resting() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=105, qty=2))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=104, qty=2, time_in_force="IOC"))
+
+    assert [event.type for event in events] == ["OrderExpired"]
+    depth = engine.depth(5)
+    assert depth["bids"] == []
+    assert len(depth["asks"]) == 1
+    assert depth["asks"][0]["price"] == 105
+    assert depth["asks"][0]["qty"] == 2
+
+
+def test_fok_can_fully_fill_across_price_levels() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3))
+    execute_command(engine, LimitOrderCommand(side="SELL", price=101, qty=2))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=101, qty=5, time_in_force="FOK"))
+
+    trades = [event for event in events if event.type == "TradeExecuted"]
+    assert len(trades) == 2
+    assert trades[0].data.price == 100
+    assert trades[1].data.price == 101
+    depth = engine.depth(5)
+    assert depth["asks"] == []
+
+
+def test_fok_insufficient_qty_does_not_mutate_book() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=4))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5, time_in_force="FOK"))
+
+    assert [event.type for event in events] == ["OrderExpired"]
+    depth = engine.depth(5)
+    assert depth["bids"] == []
+    assert len(depth["asks"]) == 1
+    assert depth["asks"][0]["price"] == 100
+    assert depth["asks"][0]["qty"] == 4
+
+
+def test_fok_respects_limit_price_and_does_not_cross_higher_level() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3))
+    execute_command(engine, LimitOrderCommand(side="SELL", price=101, qty=3))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=4, time_in_force="FOK"))
+
+    assert [event.type for event in events] == ["OrderExpired"]
+    depth = engine.depth(5)
+    assert len(depth["asks"]) == 2
+    assert depth["asks"][0]["price"] == 100
+    assert depth["asks"][0]["qty"] == 3
+    assert depth["asks"][1]["price"] == 101
+    assert depth["asks"][1]["qty"] == 3

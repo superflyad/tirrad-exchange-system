@@ -9,6 +9,10 @@
 namespace tes {
 
 std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty) {
+    return place_limit_order(side, price, qty, TimeInForce::Gtc);
+}
+
+std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty, TimeInForce tif) {
     if (!is_valid_price(price)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidPrice}};
     }
@@ -60,9 +64,13 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
     }
 
     if (remaining.value > 0) {
-        const std::vector<Event> rest_events =
-            book_.add_limit_order(Order{taker_id, side, price, Qty{remaining.value}});
-        events.insert(events.end(), rest_events.begin(), rest_events.end());
+        if (tif == TimeInForce::Ioc) {
+            events.emplace_back(OrderCanceled{taker_id});
+        } else {
+            const std::vector<Event> rest_events =
+                book_.add_limit_order(Order{taker_id, side, price, Qty{remaining.value}});
+            events.insert(events.end(), rest_events.begin(), rest_events.end());
+        }
     }
 
     return events;

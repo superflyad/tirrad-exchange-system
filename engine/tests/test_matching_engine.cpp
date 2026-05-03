@@ -491,3 +491,75 @@ TEST_CASE("depth obeys level limit and zero levels") {
     CHECK(zero.bids.empty());
     CHECK(zero.asks.empty());
 }
+
+TEST_CASE("ioc full fill executes and does not rest") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Ioc);
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 5);
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("ioc partial fill cancels remainder without resting") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Ioc);
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 3);
+    CHECK_FALSE(find_order_accepted(events).has_value());
+
+    bool saw_cancel = false;
+    for (const tes::Event& event : events) {
+        if (std::holds_alternative<tes::OrderCanceled>(event)) {
+            saw_cancel = true;
+        }
+    }
+    CHECK(saw_cancel);
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("ioc no fill does not rest") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{105}, tes::Qty{2});
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{104}, tes::Qty{2}, tes::TimeInForce::Ioc);
+
+    CHECK(collect_trades(events).empty());
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    REQUIRE(events.size() == 1);
+    CHECK(std::holds_alternative<tes::OrderCanceled>(events[0]));
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 105);
+}
+
+TEST_CASE("ioc does not cross beyond limit price") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{2});
+
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{4}, tes::TimeInForce::Ioc);
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].qty.value == 2);
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 101);
+    CHECK_FALSE(engine.book().best_bid().has_value());
+}

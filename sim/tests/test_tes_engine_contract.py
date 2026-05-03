@@ -41,3 +41,13 @@ def test_binding_events_have_no_extra_top_level_keys() -> None:
 
     for raw in raw_events:
         assert set(raw.keys()) == {"type", "data"}
+
+
+def test_binding_exposes_order_type_and_time_in_force_enums() -> None:
+    import tes_engine
+
+    assert tes_engine.OrderType.LIMIT.name == "LIMIT"
+    assert tes_engine.OrderType.MARKET.name == "MARKET"
+    assert tes_engine.TimeInForce.GTC.name == "GTC"
+    assert tes_engine.TimeInForce.IOC.name == "IOC"
+    assert tes_engine.TimeInForce.FOK.name == "FOK"

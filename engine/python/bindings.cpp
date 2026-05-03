@@ -169,6 +169,17 @@ namespace {
 PYBIND11_MODULE(tes_engine, m) {
     m.doc() = "Python bindings for TES matching engine";
 
+    py::enum_<tes::OrderType>(m, "OrderType")
+        .value("LIMIT", tes::OrderType::Limit)
+        .value("MARKET", tes::OrderType::Market)
+        .export_values();
+
+    py::enum_<tes::TimeInForce>(m, "TimeInForce")
+        .value("GTC", tes::TimeInForce::Gtc)
+        .value("IOC", tes::TimeInForce::Ioc)
+        .value("FOK", tes::TimeInForce::Fok)
+        .export_values();
+
     py::class_<tes::MatchingEngine>(m, "MatchingEngine")
         .def(py::init<>())
         .def("place_limit_order",
@@ -180,7 +191,7 @@ PYBIND11_MODULE(tes_engine, m) {
                      self.place_limit_order(parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
                  return events_to_dicts(events);
              },
-             py::arg("side"), py::arg("price_ticks"), py::arg("qty"))
+             py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC")
         .def("place_market_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty) {
                  const tes::Side parsed_side = side_from_string(side);

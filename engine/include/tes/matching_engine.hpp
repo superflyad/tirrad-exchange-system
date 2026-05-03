@@ -22,6 +22,7 @@ class MatchingEngine {
   public:
     [[nodiscard]] std::vector<Event> place_limit_order(Side side, Price price, Qty qty,
                                                        TimeInForce time_in_force = TimeInForce::Gtc);
+    [[nodiscard]] std::vector<Event> place_market_order(Side side, Qty qty);
     [[nodiscard]] std::vector<Event> cancel(OrderId id);
     [[nodiscard]] BookDepth depth(std::size_t levels) const;
 

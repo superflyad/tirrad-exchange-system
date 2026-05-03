@@ -22,13 +22,13 @@ class OrderRejectedData:
     side: Literal["BUY", "SELL"]
     price: int
     qty: int
-    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]
+    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]
 
 
 @dataclass(frozen=True)
 class CancelRejectedData:
     order_id: int
-    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]
+    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]
 
 
 @dataclass(frozen=True)
@@ -121,9 +121,9 @@ def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     return value
 
 
-def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]:
-    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId"}:
-        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId")
+def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]:
+    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"}:
+        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId, NoLiquidity")
     return value
 
 

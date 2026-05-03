@@ -16,6 +16,8 @@ TEST_CASE("replay log records commands in sequence") {
     REQUIRE(log.size() == 2);
     REQUIRE(std::holds_alternative<tes::LimitOrderCommand>(log.entries()[0].command));
     REQUIRE(std::holds_alternative<tes::CancelOrderCommand>(log.entries()[1].command));
+    CHECK(log.entries()[0].sequence == 0);
+    CHECK(log.entries()[1].sequence == 1);
 
     const tes::LimitOrderCommand first = std::get<tes::LimitOrderCommand>(log.entries()[0].command);
     CHECK(first.side == tes::Side::Bid);
@@ -50,4 +52,18 @@ TEST_CASE("replay log preserves empty event lists") {
 
     REQUIRE(log.size() == 1);
     CHECK(log.entries()[0].events.empty());
+}
+
+TEST_CASE("replay log serializes entries with sequence command and events") {
+    tes::ReplayLog log;
+
+    log.record(tes::LimitOrderCommand{tes::Side::Ask, tes::Price{104}, tes::Qty{7}},
+               {tes::OrderAccepted{7, tes::Side::Ask, tes::Price{104}, tes::Qty{7}},
+                tes::TopOfBook{std::nullopt, tes::Price{104}}});
+    log.record(tes::CancelOrderCommand{7}, {});
+
+    const std::string serialized = log.to_json();
+
+    CHECK(serialized ==
+          "[{\"sequence\":0,\"command\":{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\"Ask\",\"price\":104,\"qty\":7}},\"events\":[{\"type\":\"OrderAccepted\",\"data\":{}},{\"type\":\"TopOfBook\",\"data\":{}}]},{\"sequence\":1,\"command\":{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":7}},\"events\":[]}]" );
 }

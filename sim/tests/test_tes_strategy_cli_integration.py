@@ -85,10 +85,11 @@ def _run_tes(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_strategy_discovery_lists_simple_market_maker() -> None:
+def test_strategy_discovery_lists_registered_strategies() -> None:
     result = _run_tes("sim", "list-strategies")
 
     assert result.returncode == 0
+    assert "crossing_taker" in result.stdout
     assert "simple_market_maker" in result.stdout
 
 
@@ -100,13 +101,7 @@ def test_strategy_execution_simple_market_maker_returns_success() -> None:
 
 
 @pytest.mark.skipif(not HAS_ENGINE, reason="tes_engine extension not available")
-def test_strategy_execution_crossing_taker_if_registered() -> None:
-    list_result = _run_tes("sim", "list-strategies")
-    assert list_result.returncode == 0
-
-    if "crossing_taker" not in list_result.stdout:
-        pytest.skip("crossing_taker not registered")
-
+def test_strategy_execution_crossing_taker_returns_success() -> None:
     run_result = _run_tes("sim", "run", "--strategy", "crossing_taker")
 
     assert run_result.returncode == 0

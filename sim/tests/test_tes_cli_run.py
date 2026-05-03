@@ -35,4 +35,17 @@ def test_run_unknown_strategy_returns_error(capsys: pytest.CaptureFixture[str]) 
 
     out = capsys.readouterr().out
     assert returncode != 0
-    assert "Unknown strategy: unknown" in out
+    assert "Unknown strategy 'unknown'" in out
+
+
+@pytest.mark.skipif(
+    not HAS_ENGINE,
+    reason="tes_engine extension not available",
+)
+def test_run_crossing_taker(capsys: pytest.CaptureFixture[str]) -> None:
+    returncode = main(["sim", "run", "--strategy", "crossing_taker"])
+
+    out = capsys.readouterr().out
+    assert returncode == 0
+    assert "Strategy: crossing_taker" in out
+    assert "Total Trades" in out

@@ -16,6 +16,16 @@ namespace tes {
 
 class OrderBook {
   public:
+    struct PriceLevel {
+        Price price;
+        Qty qty;
+    };
+
+    struct Depth {
+        std::vector<PriceLevel> bids;
+        std::vector<PriceLevel> asks;
+    };
+
     struct FillResult {
         OrderId maker_id;
         Price price;
@@ -127,7 +137,36 @@ class OrderBook {
         return fill_best_from_levels(asks, qty);
     }
 
+    [[nodiscard]] Depth depth(std::size_t levels) const {
+        Depth snapshot;
+        if (levels == 0) {
+            return snapshot;
+        }
+
+        append_levels(snapshot.bids, bids, levels);
+        append_levels(snapshot.asks, asks, levels);
+        return snapshot;
+    }
+
   private:
+    template <typename PriceLevels>
+    static void append_levels(std::vector<PriceLevel>& out, const PriceLevels& levels, std::size_t limit) {
+        std::size_t count = 0;
+        for (const auto& [price, orders] : levels) {
+            if (count >= limit) {
+                break;
+            }
+
+            Qty total{0};
+            for (const Order& order : orders) {
+                total.value += order.qty.value;
+            }
+
+            out.push_back(PriceLevel{price, total});
+            ++count;
+        }
+    }
+
     template <typename PriceLevels>
     static void erase_from_levels(PriceLevels& levels, OrderId id, Price price) {
         auto level_it = levels.find(price);

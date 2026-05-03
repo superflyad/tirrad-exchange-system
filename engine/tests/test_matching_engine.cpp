@@ -155,6 +155,95 @@ TEST_CASE("non crossing order rests without trade") {
     CHECK(top->best_ask->ticks == 105);
 }
 
+TEST_CASE("incoming sell partially fills resting buy and remainder rests") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{10});
+    const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{15});
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 10);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].taker_side == tes::Side::Ask);
+
+    const std::optional<tes::OrderAccepted> accepted = find_order_accepted(events);
+    REQUIRE(accepted.has_value());
+    CHECK(accepted->side == tes::Side::Ask);
+    CHECK(accepted->price.ticks == 100);
+    CHECK(accepted->qty.value == 5);
+
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 100);
+}
+
+TEST_CASE("incoming buy partially fills resting sell and remainder rests") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{10});
+    const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{15});
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 10);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].taker_side == tes::Side::Bid);
+
+    const std::optional<tes::OrderAccepted> accepted = find_order_accepted(events);
+    REQUIRE(accepted.has_value());
+    CHECK(accepted->side == tes::Side::Bid);
+    CHECK(accepted->price.ticks == 100);
+    CHECK(accepted->qty.value == 5);
+
+    CHECK_FALSE(engine.book().best_ask().has_value());
+    REQUIRE(engine.book().best_bid().has_value());
+    CHECK(engine.book().best_bid()->ticks == 100);
+}
+
+TEST_CASE("incoming order fills multiple resting orders at same price in fifo") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{4});
+
+    const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{8});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 3);
+    CHECK(trades[0].maker_id < trades[1].maker_id);
+    CHECK(trades[1].maker_id < trades[2].maker_id);
+    CHECK(trades[0].qty.value == 2);
+    CHECK(trades[1].qty.value == 3);
+    CHECK(trades[2].qty.value == 3);
+
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 100);
+    const std::optional<tes::Order> front = engine.book().front_of_level(tes::Side::Ask, tes::Price{100});
+    REQUIRE(front.has_value());
+    CHECK(front->qty.value == 1);
+}
+
+TEST_CASE("fully filled incoming order does not rest after sweeping multiple levels") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{2});
+
+    const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{5});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 2);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].qty.value == 3);
+    CHECK(trades[1].price.ticks == 101);
+    CHECK(trades[1].qty.value == 2);
+
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+    CHECK_FALSE(engine.book().best_bid().has_value());
 TEST_CASE("invalid price order is ignored") {
     tes::MatchingEngine engine;
 

@@ -6,8 +6,8 @@ from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, parse
 
 
 def test_parse_limit_order_command() -> None:
-    command = parse_command({"type": "LimitOrder", "data": {"side": "BUY", "price": 100, "qty": 10}})
-    assert command == LimitOrderCommand(side="BUY", price=100, qty=10)
+    command = parse_command({"type": "LimitOrder", "data": {"side": "BUY", "price": 100, "qty": 10, "time_in_force": "GTC"}})
+    assert command == LimitOrderCommand(side="BUY", price=100, qty=10, time_in_force="GTC")
 
 
 def test_parse_cancel_order_command() -> None:
@@ -17,7 +17,7 @@ def test_parse_cancel_order_command() -> None:
 
 def test_parse_commands_multiple() -> None:
     commands = parse_commands([
-        {"type": "LimitOrder", "data": {"side": "SELL", "price": 101, "qty": 3}},
+        {"type": "LimitOrder", "data": {"side": "SELL", "price": 101, "qty": 3, "time_in_force": "GTC"}},
         {"type": "CancelOrder", "data": {"order_id": 1}},
     ])
     assert len(commands) == 2

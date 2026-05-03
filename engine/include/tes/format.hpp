@@ -28,6 +28,19 @@ namespace tes {
     return std::to_string(qty.value);
 }
 
+[[nodiscard]] inline std::string to_string(RejectReason reason) {
+    switch (reason) {
+        case RejectReason::InvalidPrice:
+            return "InvalidPrice";
+        case RejectReason::InvalidQuantity:
+            return "InvalidQuantity";
+        case RejectReason::UnknownOrderId:
+            return "UnknownOrderId";
+    }
+
+    return "Unknown";
+}
+
 [[nodiscard]] inline std::string to_string(const Event& event) {
     return std::visit(
         [](const auto& value) -> std::string {
@@ -41,8 +54,21 @@ namespace tes {
                 return stream.str();
             }
 
+            else if constexpr (std::is_same_v<T, OrderRejected>) {
+                stream << "OrderRejected{side=" << to_string(value.side)
+                       << ", price=" << to_string(value.price) << ", qty=" << to_string(value.qty)
+                       << ", reason=" << to_string(value.reason) << "}";
+                return stream.str();
+            }
+
             else if constexpr (std::is_same_v<T, OrderCanceled>) {
                 stream << "OrderCanceled{id=" << value.id << "}";
+                return stream.str();
+            }
+
+            else if constexpr (std::is_same_v<T, CancelRejected>) {
+                stream << "CancelRejected{id=" << value.id << ", reason=" << to_string(value.reason)
+                       << "}";
                 return stream.str();
             }
 

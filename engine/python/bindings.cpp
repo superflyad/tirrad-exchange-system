@@ -23,6 +23,16 @@ namespace {
     return "SELL";
 }
 
+[[nodiscard]] std::string reject_reason_to_string(tes::RejectReason reason) {
+    if (reason == tes::RejectReason::InvalidPrice) {
+        return "InvalidPrice";
+    }
+    if (reason == tes::RejectReason::InvalidQuantity) {
+        return "InvalidQuantity";
+    }
+    return "UnknownOrderId";
+}
+
 [[nodiscard]] tes::Side side_from_string(const std::string& side) {
     if (side == "Bid") {
         return tes::Side::Bid;
@@ -48,11 +58,29 @@ namespace {
                 data["qty"] = evt.qty.value;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::OrderRejected>) {
+                py::dict out;
+                out["type"] = "OrderRejected";
+                py::dict data;
+                data["side"] = side_to_string(evt.side);
+                data["price"] = evt.price.ticks;
+                data["qty"] = evt.qty.value;
+                data["reason"] = reject_reason_to_string(evt.reason);
+                out["data"] = data;
+                return out;
             } else if constexpr (std::is_same_v<T, tes::OrderCanceled>) {
                 py::dict out;
                 out["type"] = "OrderCanceled";
                 py::dict data;
                 data["order_id"] = evt.id;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::CancelRejected>) {
+                py::dict out;
+                out["type"] = "CancelRejected";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["reason"] = reject_reason_to_string(evt.reason);
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::TradeExecuted>) {

@@ -36,6 +36,19 @@ TEST_CASE("tes::to_string(Event) formats all event variants") {
     CHECK(canceled_text.find("OrderCanceled") != std::string::npos);
     CHECK(canceled_text.find("id=11") != std::string::npos);
 
+    const tes::Event rejected =
+        tes::OrderRejected{tes::Side::Ask, tes::Price{101}, tes::Qty{0}, tes::RejectReason::InvalidQuantity};
+    const std::string rejected_text = tes::to_string(rejected);
+    CHECK_FALSE(rejected_text.empty());
+    CHECK(rejected_text.find("OrderRejected") != std::string::npos);
+    CHECK(rejected_text.find("reason=InvalidQuantity") != std::string::npos);
+
+    const tes::Event cancel_rejected = tes::CancelRejected{88, tes::RejectReason::UnknownOrderId};
+    const std::string cancel_rejected_text = tes::to_string(cancel_rejected);
+    CHECK_FALSE(cancel_rejected_text.empty());
+    CHECK(cancel_rejected_text.find("CancelRejected") != std::string::npos);
+    CHECK(cancel_rejected_text.find("reason=UnknownOrderId") != std::string::npos);
+
     const tes::Event trade = tes::TradeExecuted{13, 5, tes::Side::Ask, tes::Price{99}, tes::Qty{4}};
     const std::string trade_text = tes::to_string(trade);
     CHECK_FALSE(trade_text.empty());

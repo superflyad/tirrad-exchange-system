@@ -7,6 +7,12 @@
 
 namespace tes {
 
+enum class RejectReason {
+    InvalidPrice,
+    InvalidQuantity,
+    UnknownOrderId,
+};
+
 struct OrderAccepted {
     OrderId id;
     Side side;
@@ -14,8 +20,20 @@ struct OrderAccepted {
     Qty qty;
 };
 
+struct OrderRejected {
+    Side side;
+    Price price;
+    Qty qty;
+    RejectReason reason;
+};
+
 struct OrderCanceled {
     OrderId id;
+};
+
+struct CancelRejected {
+    OrderId id;
+    RejectReason reason;
 };
 
 struct TradeExecuted {
@@ -31,6 +49,6 @@ struct TopOfBook {
     std::optional<Price> best_ask;
 };
 
-using Event = std::variant<OrderAccepted, OrderCanceled, TradeExecuted, TopOfBook>;
+using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, TopOfBook>;
 
 }  // namespace tes

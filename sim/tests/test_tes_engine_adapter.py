@@ -112,7 +112,7 @@ def test_ioc_partial_fill_cancels_remainder() -> None:
     events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5, time_in_force="IOC"))
 
     assert any(event.type == "TradeExecuted" for event in events)
-    assert any(event.type == "OrderCanceled" for event in events)
+    assert any(event.type == "OrderExpired" for event in events)
 
 
 def test_fok_failure_cancels_order_without_trade() -> None:
@@ -123,7 +123,7 @@ def test_fok_failure_cancels_order_without_trade() -> None:
 
     events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5, time_in_force="FOK"))
 
-    assert any(event.type == "OrderCanceled" for event in events)
+    assert any(event.type == "OrderExpired" for event in events)
     assert not any(event.type == "TradeExecuted" for event in events)
 
 

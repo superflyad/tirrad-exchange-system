@@ -30,6 +30,9 @@ namespace {
     if (reason == tes::RejectReason::InvalidQuantity) {
         return "InvalidQuantity";
     }
+    if (reason == tes::RejectReason::NoLiquidity) {
+        return "NoLiquidity";
+    }
     return "UnknownOrderId";
 }
 
@@ -163,6 +166,13 @@ PYBIND11_MODULE(tes_engine, m) {
                  return events_to_dicts(events);
              },
              py::arg("side"), py::arg("price_ticks"), py::arg("qty"))
+        .def("place_market_order",
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty) {
+                 const tes::Side parsed_side = side_from_string(side);
+                 const std::vector<tes::Event> events = self.place_market_order(parsed_side, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("side"), py::arg("qty"))
         .def("cancel",
              [](tes::MatchingEngine& self, std::uint64_t order_id) {
                  const std::vector<tes::Event> events = self.cancel(order_id);

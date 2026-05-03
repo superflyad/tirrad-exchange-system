@@ -601,6 +601,26 @@ TEST_CASE("fok respects limit price") {
     CHECK(engine.book().level_size(tes::Side::Ask, tes::Price{101}) == 1);
 }
 
+
+TEST_CASE("gtc partial fill rests remainder") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    const std::vector<tes::Event> events =
+        engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Gtc);
+
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 3);
+    REQUIRE(find_order_accepted(events).has_value());
+
+    REQUIRE(engine.book().best_bid().has_value());
+    CHECK(engine.book().best_bid()->ticks == 100);
+    const std::optional<tes::Order> resting = engine.book().front_of_level(tes::Side::Bid, tes::Price{100});
+    REQUIRE(resting.has_value());
+    CHECK(resting->qty.value == 2);
+}
+
 TEST_CASE("ioc full fill executes and does not rest") {
     tes::MatchingEngine engine;
 

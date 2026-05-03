@@ -6,18 +6,18 @@ from pathlib import Path
 from sim.tes_cli.commands.inspect import handle_inspect
 from sim.tes_models.events import (
     OrderAcceptedData,
-    OrderAcceptedEvent,
-    TesEvent,
+    OrderAccepted,
+    TesEngineEvent,
     TradeExecutedData,
-    TradeExecutedEvent,
+    TradeExecuted,
 )
 from sim.tes_persistence.runs import save_run
 
 
-def _sample_events() -> list[TesEvent]:
+def _sample_events() -> list[TesEngineEvent]:
     return [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
-        TradeExecutedEvent(type="TradeExecuted", data=TradeExecutedData(maker_order_id=1, taker_order_id=2, price=100, qty=4)),
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
+        TradeExecuted(type="TradeExecuted", data=TradeExecutedData(maker_order_id=1, taker_order_id=2, price=100, qty=4)),
     ]
 
 

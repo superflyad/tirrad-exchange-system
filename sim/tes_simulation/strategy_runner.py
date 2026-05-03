@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 from sim.tes_simulation.runner import run_commands
 from sim.tes_strategy.strategy import Strategy
 
 
 @dataclass(frozen=True)
 class StrategySimulationResult:
-    events: list[TesEvent]
+    events: list[TesEngineEvent]
     total_commands: int
     total_events: int
     total_steps: int
@@ -24,7 +24,7 @@ def run_strategy_simulation(
     if max_steps <= 0:
         raise ValueError("max_steps must be positive")
 
-    all_events: list[TesEvent] = []
+    all_events: list[TesEngineEvent] = []
     total_commands = 0
     total_steps = 0
 

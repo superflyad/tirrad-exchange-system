@@ -6,18 +6,18 @@ import pytest
 
 from sim.tes_models.events import (
     OrderAcceptedData,
-    OrderAcceptedEvent,
-    TesEvent,
+    OrderAccepted,
+    TesEngineEvent,
     TopOfBookData,
-    TopOfBookEvent,
+    TopOfBook,
 )
 from sim.tes_persistence.events import read_events_jsonl, write_events_jsonl
 
 
-def _sample_events() -> list[TesEvent]:
+def _sample_events() -> list[TesEngineEvent]:
     return [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
-        TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
+        TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
     ]
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sim.tes_models.commands import LimitOrderCommand, TesCommand
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 from sim.tes_strategy.strategy import Strategy
 
 from sim.strategies.new_order_support import detect_new_order_api_support, missing_reason
@@ -21,6 +21,6 @@ class FokSuccessStrategy(Strategy):
             fok_command,
         ]
 
-    def on_event(self, event: TesEvent) -> list[TesCommand]:
+    def on_event(self, event: TesEngineEvent) -> list[TesCommand]:
         _ = event
         return []

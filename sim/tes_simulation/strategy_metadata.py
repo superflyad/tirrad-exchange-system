@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 
 
 @dataclass(frozen=True)
@@ -15,7 +15,7 @@ class StrategyRunMetadata:
 
 def build_strategy_run_metadata(
     strategy_name: str,
-    events: list[TesEvent],
+    events: list[TesEngineEvent],
     total_commands: int,
 ) -> StrategyRunMetadata:
     if strategy_name == "":

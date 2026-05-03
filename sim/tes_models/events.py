@@ -64,70 +64,74 @@ class TopOfBookData:
 
 
 @dataclass(frozen=True)
-class OrderAcceptedEvent:
+class OrderAccepted:
     type: Literal["OrderAccepted"]
     data: OrderAcceptedData
 
 
 @dataclass(frozen=True)
-class OrderCanceledEvent:
+class OrderCanceled:
     type: Literal["OrderCanceled"]
     data: OrderCanceledData
 
 
 @dataclass(frozen=True)
-class OrderRejectedEvent:
+class OrderRejected:
     type: Literal["OrderRejected"]
     data: OrderRejectedData
 
 
 @dataclass(frozen=True)
-class CancelRejectedEvent:
+class CancelRejected:
     type: Literal["CancelRejected"]
     data: CancelRejectedData
 
 
 @dataclass(frozen=True)
-class TradeExecutedEvent:
+class TradeExecuted:
     type: Literal["TradeExecuted"]
     data: TradeExecutedData
 
 
 @dataclass(frozen=True)
-class OrderPartiallyFilledEvent:
+class OrderPartiallyFilled:
     type: Literal["OrderPartiallyFilled"]
     data: OrderPartiallyFilledData
 
 
 @dataclass(frozen=True)
-class OrderFilledEvent:
+class OrderFilled:
     type: Literal["OrderFilled"]
     data: OrderFilledData
 
 
 @dataclass(frozen=True)
-class OrderExpiredEvent:
+class OrderExpired:
     type: Literal["OrderExpired"]
     data: OrderExpiredData
 
 
 @dataclass(frozen=True)
-class TopOfBookEvent:
+class TopOfBook:
     type: Literal["TopOfBook"]
     data: TopOfBookData
 
 
-TesEvent: TypeAlias = (
-    OrderAcceptedEvent
-    | OrderRejectedEvent
-    | OrderCanceledEvent
-    | CancelRejectedEvent
-    | TradeExecutedEvent
-    | OrderPartiallyFilledEvent
-    | OrderFilledEvent
-    | OrderExpiredEvent
-    | TopOfBookEvent
+TesEngineEvent: TypeAlias = (
+    OrderAccepted
+    | OrderRejected
+    | OrderCanceled
+    | CancelRejected
+    | TradeExecuted
+    | OrderPartiallyFilled
+    | OrderFilled
+    | OrderExpired
+    | TopOfBook
 )
+
+# Backward-compatible alias for historical naming.
+TesEvent: TypeAlias = TesEngineEvent
+
 
 
 def _require_dict(value: Any, name: str) -> dict[str, Any]:
@@ -166,7 +170,7 @@ def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuanti
     return value
 
 
-def parse_event(raw: dict[str, Any]) -> TesEvent:
+def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
     event = _require_dict(raw, "event")
     _require_exact_keys(event, {"type", "data"}, "event")
 
@@ -178,7 +182,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderAccepted":
         _require_exact_keys(data, {"order_id", "side", "price", "qty"}, "OrderAccepted.data")
-        return OrderAcceptedEvent(
+        return OrderAccepted(
             type="OrderAccepted",
             data=OrderAcceptedData(
                 order_id=_require_int(data["order_id"], "order_id"),
@@ -190,7 +194,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderRejected":
         _require_exact_keys(data, {"side", "price", "qty", "reason"}, "OrderRejected.data")
-        return OrderRejectedEvent(
+        return OrderRejected(
             type="OrderRejected",
             data=OrderRejectedData(
                 side=_require_side(data["side"]),
@@ -202,14 +206,14 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderCanceled":
         _require_exact_keys(data, {"order_id"}, "OrderCanceled.data")
-        return OrderCanceledEvent(
+        return OrderCanceled(
             type="OrderCanceled",
             data=OrderCanceledData(order_id=_require_int(data["order_id"], "order_id")),
         )
 
     if event_type == "CancelRejected":
         _require_exact_keys(data, {"order_id", "reason"}, "CancelRejected.data")
-        return CancelRejectedEvent(
+        return CancelRejected(
             type="CancelRejected",
             data=CancelRejectedData(
                 order_id=_require_int(data["order_id"], "order_id"),
@@ -219,7 +223,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "TradeExecuted":
         _require_exact_keys(data, {"price", "qty", "maker_order_id", "taker_order_id"}, "TradeExecuted.data")
-        return TradeExecutedEvent(
+        return TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(
                 price=_require_int(data["price"], "price"),
@@ -231,7 +235,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "TopOfBook":
         _require_exact_keys(data, {"best_bid", "best_ask"}, "TopOfBook.data")
-        return TopOfBookEvent(
+        return TopOfBook(
             type="TopOfBook",
             data=TopOfBookData(
                 best_bid=_require_optional_int(data["best_bid"], "best_bid"),
@@ -241,7 +245,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderPartiallyFilled":
         _require_exact_keys(data, {"order_id", "last_fill_qty", "remaining_qty"}, "OrderPartiallyFilled.data")
-        return OrderPartiallyFilledEvent(
+        return OrderPartiallyFilled(
             type="OrderPartiallyFilled",
             data=OrderPartiallyFilledData(
                 order_id=_require_int(data["order_id"], "order_id"),
@@ -252,7 +256,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderFilled":
         _require_exact_keys(data, {"order_id", "last_fill_qty"}, "OrderFilled.data")
-        return OrderFilledEvent(
+        return OrderFilled(
             type="OrderFilled",
             data=OrderFilledData(
                 order_id=_require_int(data["order_id"], "order_id"),
@@ -262,7 +266,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
 
     if event_type == "OrderExpired":
         _require_exact_keys(data, {"order_id"}, "OrderExpired.data")
-        return OrderExpiredEvent(
+        return OrderExpired(
             type="OrderExpired",
             data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id")),
         )
@@ -270,7 +274,7 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
     raise ValueError(f"unknown event type: {event_type}")
 
 
-def parse_events(raw_events: list[dict[str, Any]]) -> list[TesEvent]:
+def parse_events(raw_events: list[dict[str, Any]]) -> list[TesEngineEvent]:
     if not isinstance(raw_events, list):
         raise ValueError("raw_events must be a list")
     return [parse_event(raw) for raw in raw_events]

@@ -4,7 +4,7 @@ import importlib
 from pathlib import Path
 
 from sim.tes_models.commands import LimitOrderCommand, TesCommand
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 from sim.tes_persistence.runs import load_run, save_run
 from sim.tes_simulation.runner import run_simulation
 
@@ -19,7 +19,7 @@ def test_tes_persistence_integration_smoke(tmp_path: Path) -> None:
     ]
 
     simulation_result = run_simulation(engine, commands)
-    original_events: list[TesEvent] = simulation_result.events
+    original_events: list[TesEngineEvent] = simulation_result.events
 
     assert any(event.type == "TradeExecuted" for event in original_events)
 

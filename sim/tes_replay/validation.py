@@ -1,35 +1,35 @@
 from __future__ import annotations
 
 from sim.tes_models.events import (
-    CancelRejectedEvent,
-    OrderAcceptedEvent,
-    OrderCanceledEvent,
-    OrderRejectedEvent,
-    TesEvent,
-    TopOfBookEvent,
-    TradeExecutedEvent,
+    CancelRejected,
+    OrderAccepted,
+    OrderCanceled,
+    OrderRejected,
+    TesEngineEvent,
+    TopOfBook,
+    TradeExecuted,
 )
 
 
-def validate_replay_events(events: list[TesEvent]) -> list[TesEvent]:
+def validate_replay_events(events: list[TesEngineEvent]) -> list[TesEngineEvent]:
     if not isinstance(events, list):
         raise ValueError("events must be a list")
 
     for event in events:
         if isinstance(event, dict):
-            raise ValueError("events must contain TesEvent objects")
+            raise ValueError("events must contain TesEngineEvent objects")
 
         if not isinstance(
             event,
             (
-                OrderAcceptedEvent,
-                OrderRejectedEvent,
-                OrderCanceledEvent,
-                CancelRejectedEvent,
-                TradeExecutedEvent,
-                TopOfBookEvent,
+                OrderAccepted,
+                OrderRejected,
+                OrderCanceled,
+                CancelRejected,
+                TradeExecuted,
+                TopOfBook,
             ),
         ):
-            raise ValueError("events must contain TesEvent objects")
+            raise ValueError("events must contain TesEngineEvent objects")
 
     return events

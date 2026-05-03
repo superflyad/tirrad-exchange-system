@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sim.tes_models.events import OrderAcceptedData, OrderAcceptedEvent, TesEvent, TopOfBookData, TopOfBookEvent
+from sim.tes_models.events import OrderAcceptedData, OrderAccepted, TesEngineEvent, TopOfBookData, TopOfBook
 from sim.tes_persistence.runs import load_run, save_run
 
 
-def _sample_events() -> list[TesEvent]:
+def _sample_events() -> list[TesEngineEvent]:
     return [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
-        TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
+        TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
     ]
 
 

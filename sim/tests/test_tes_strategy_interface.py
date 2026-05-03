@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand
-from sim.tes_models.events import TopOfBookData, TopOfBookEvent
+from sim.tes_models.events import TopOfBookData, TopOfBook
 from sim.tes_strategy.strategy import SimpleMarketMaker, Strategy
 
 
@@ -9,7 +9,7 @@ class StubStrategy(Strategy):
     def on_start(self) -> list[LimitOrderCommand | CancelOrderCommand]:
         return [LimitOrderCommand(side="BUY", price=100, qty=2), CancelOrderCommand(order_id=7)]
 
-    def on_event(self, event: TopOfBookEvent) -> list[LimitOrderCommand | CancelOrderCommand]:
+    def on_event(self, event: TopOfBook) -> list[LimitOrderCommand | CancelOrderCommand]:
         _ = event
         return []
 
@@ -31,7 +31,7 @@ def test_strategy_commands_are_valid_types() -> None:
 
 def test_strategy_on_event_returns_list() -> None:
     strategy = StubStrategy()
-    event = TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=100, best_ask=102))
+    event = TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=100, best_ask=102))
 
     commands = strategy.on_event(event)
     assert isinstance(commands, list)

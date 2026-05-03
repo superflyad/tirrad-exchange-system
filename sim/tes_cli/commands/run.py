@@ -7,10 +7,10 @@ from importlib import import_module
 
 from sim.tes_models.commands import TesCommand
 from sim.tes_models.events import (
-    CancelRejectedEvent,
-    OrderAcceptedEvent,
-    OrderRejectedEvent,
-    TradeExecutedEvent,
+    CancelRejected,
+    OrderAccepted,
+    OrderRejected,
+    TradeExecuted,
 )
 from sim.tes_strategy.registry import get_strategy
 
@@ -51,7 +51,7 @@ def _format_command(command: TesCommand) -> str:
 
 
 def _format_event(event: object) -> str:
-    if isinstance(event, OrderAcceptedEvent):
+    if isinstance(event, OrderAccepted):
         return (
             "OrderAccepted("
             f"order_id={event.data.order_id}, "
@@ -60,7 +60,7 @@ def _format_event(event: object) -> str:
             f"qty={event.data.qty}"
             ")"
         )
-    if isinstance(event, OrderRejectedEvent):
+    if isinstance(event, OrderRejected):
         return (
             "OrderRejected("
             f"side={event.data.side}, "
@@ -69,14 +69,14 @@ def _format_event(event: object) -> str:
             f"reason={event.data.reason}"
             ")"
         )
-    if isinstance(event, CancelRejectedEvent):
+    if isinstance(event, CancelRejected):
         return (
             "CancelRejected("
             f"order_id={event.data.order_id}, "
             f"reason={event.data.reason}"
             ")"
         )
-    if isinstance(event, TradeExecutedEvent):
+    if isinstance(event, TradeExecuted):
         return (
             "TradeExecuted("
             f"price={event.data.price}, "
@@ -142,7 +142,7 @@ def handle_run(args: argparse.Namespace) -> int:
         else:
             _print_book_depth(depth_method(depth_levels))
 
-    trade_events = [event for event in all_events if isinstance(event, TradeExecutedEvent)]
+    trade_events = [event for event in all_events if isinstance(event, TradeExecuted)]
     total_trades = len(trade_events)
     total_traded_qty = sum(event.data.qty for event in trade_events)
     traded_notional = sum(event.data.price * event.data.qty for event in trade_events)

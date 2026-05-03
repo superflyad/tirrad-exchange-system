@@ -125,6 +125,40 @@ class OrderBook {
         return it == asks.end() ? 0U : it->second.size();
     }
 
+    [[nodiscard]] std::optional<Order> find_order(OrderId id) const {
+        const auto index_it = order_index.find(id);
+        if (index_it == order_index.end()) {
+            return std::nullopt;
+        }
+
+        const Side side = index_it->second.first;
+        const Price price = index_it->second.second;
+
+        if (side == Side::Bid) {
+            const auto level_it = bids.find(price);
+            if (level_it == bids.end()) {
+                return std::nullopt;
+            }
+            for (const Order& order : level_it->second) {
+                if (order.id == id) {
+                    return order;
+                }
+            }
+            return std::nullopt;
+        }
+
+        const auto level_it = asks.find(price);
+        if (level_it == asks.end()) {
+            return std::nullopt;
+        }
+        for (const Order& order : level_it->second) {
+            if (order.id == id) {
+                return order;
+            }
+        }
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::optional<FillResult> fill_best(Side side, Qty qty) {
         if (!is_valid_qty(qty)) {
             return std::nullopt;

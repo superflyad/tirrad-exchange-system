@@ -17,9 +17,6 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
         return {OrderRejected{side, price, qty, RejectReason::InvalidQuantity}};
     }
 
-    const OrderId taker_id = next_order_id_;
-    ++next_order_id_;
-
     std::vector<Event> events;
     if (tif == TimeInForce::Fok) {
         const Qty available = book_.executable_qty(side, price);
@@ -117,6 +114,24 @@ std::vector<Event> MatchingEngine::cancel(OrderId id) {
     if (events.empty()) {
         return {CancelRejected{id, RejectReason::UnknownOrderId}};
     }
+    return events;
+}
+
+std::vector<Event> MatchingEngine::replace_order(OrderId id, Price new_price, Qty new_qty) {
+    const std::optional<Order> existing = book_.find_order(id);
+    if (!existing.has_value()) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId}};
+    }
+    if (!is_valid_price(new_price)) {
+        return {OrderRejected{existing->side, new_price, new_qty, RejectReason::InvalidPrice}};
+    }
+    if (!is_valid_qty(new_qty)) {
+        return {OrderRejected{existing->side, new_price, new_qty, RejectReason::InvalidQuantity}};
+    }
+
+    std::vector<Event> events = book_.cancel(id);
+    std::vector<Event> placement = place_limit_order_with_id(id, existing->side, new_price, new_qty, TimeInForce::Gtc);
+    events.insert(events.end(), placement.begin(), placement.end());
     return events;
 }
 

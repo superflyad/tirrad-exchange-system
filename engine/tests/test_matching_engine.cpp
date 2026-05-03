@@ -550,6 +550,8 @@ TEST_CASE("fok respects limit price") {
     CHECK(engine.book().best_ask()->ticks == 100);
     CHECK(engine.book().level_size(tes::Side::Ask, tes::Price{100}) == 1);
     CHECK(engine.book().level_size(tes::Side::Ask, tes::Price{101}) == 1);
+}
+
 TEST_CASE("ioc full fill executes and does not rest") {
     tes::MatchingEngine engine;
 
@@ -620,4 +622,99 @@ TEST_CASE("ioc does not cross beyond limit price") {
     REQUIRE(engine.book().best_ask().has_value());
     CHECK(engine.book().best_ask()->ticks == 101);
     CHECK_FALSE(engine.book().best_bid().has_value());
+}
+
+TEST_CASE("replace order changes price level") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> add_events = engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{10});
+    const tes::OrderAccepted accepted = std::get<tes::OrderAccepted>(add_events.front());
+
+    const std::vector<tes::Event> replace_events = engine.replace_order(accepted.id, tes::Price{101}, tes::Qty{10});
+
+    CHECK(std::holds_alternative<tes::OrderCanceled>(replace_events.front()));
+    const std::optional<tes::OrderAccepted> replaced = find_order_accepted(replace_events);
+    REQUIRE(replaced.has_value());
+    CHECK(replaced->id == accepted.id);
+    CHECK(replaced->price.ticks == 101);
+    CHECK(engine.book().best_bid().has_value());
+    CHECK(engine.book().best_bid()->ticks == 101);
+}
+
+TEST_CASE("replace order changes resting quantity") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> add_events = engine.place_limit_order(tes::Side::Ask, tes::Price{105}, tes::Qty{10});
+    const tes::OrderAccepted accepted = std::get<tes::OrderAccepted>(add_events.front());
+
+    (void)engine.replace_order(accepted.id, tes::Price{105}, tes::Qty{4});
+
+    const tes::BookDepth depth = engine.depth(1);
+    REQUIRE(depth.asks.size() == 1);
+    CHECK(depth.asks[0].price.ticks == 105);
+    CHECK(depth.asks[0].qty.value == 4);
+}
+
+TEST_CASE("replace order loses fifo priority at same price") {
+    tes::MatchingEngine engine;
+
+    const tes::OrderId first_id = std::get<tes::OrderAccepted>(
+        engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3}).front())
+                                     .id;
+    const tes::OrderId second_id = std::get<tes::OrderAccepted>(
+        engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3}).front())
+                                      .id;
+
+    (void)engine.replace_order(first_id, tes::Price{100}, tes::Qty{3});
+
+    const std::vector<tes::TradeExecuted> trades =
+        collect_trades(engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{3}));
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].maker_id == second_id);
+}
+
+TEST_CASE("replace unknown order rejects") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> events = engine.replace_order(999, tes::Price{100}, tes::Qty{1});
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(events[0]));
+    CHECK(std::get<tes::CancelRejected>(events[0]).reason == tes::RejectReason::UnknownOrderId);
+}
+
+TEST_CASE("replace invalid values reject without mutating book") {
+    tes::MatchingEngine engine;
+
+    const tes::OrderId id =
+        std::get<tes::OrderAccepted>(engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5}).front()).id;
+
+    const std::vector<tes::Event> bad_price = engine.replace_order(id, tes::Price{-1}, tes::Qty{5});
+    REQUIRE(bad_price.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(bad_price[0]));
+
+    const std::vector<tes::Event> bad_qty = engine.replace_order(id, tes::Price{100}, tes::Qty{0});
+    REQUIRE(bad_qty.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(bad_qty[0]));
+
+    const std::optional<tes::Order> front = engine.book().front_of_level(tes::Side::Bid, tes::Price{100});
+    REQUIRE(front.has_value());
+    CHECK(front->id == id);
+    CHECK(front->qty.value == 5);
+}
+
+TEST_CASE("replace can execute immediately when crossing") {
+    tes::MatchingEngine engine;
+
+    const tes::OrderId bid_id =
+        std::get<tes::OrderAccepted>(engine.place_limit_order(tes::Side::Bid, tes::Price{99}, tes::Qty{5}).front()).id;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+
+    const std::vector<tes::Event> events = engine.replace_order(bid_id, tes::Price{100}, tes::Qty{5});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].taker_id == bid_id);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
 }

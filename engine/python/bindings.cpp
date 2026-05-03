@@ -205,6 +205,13 @@ PYBIND11_MODULE(tes_engine, m) {
                  return events_to_dicts(events);
              },
              py::arg("order_id"))
+        .def("replace_order",
+             [](tes::MatchingEngine& self, std::uint64_t order_id, std::int64_t price_ticks, std::int64_t qty) {
+                 const std::vector<tes::Event> events =
+                     self.replace_order(order_id, tes::Price{price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("order_id"), py::arg("price_ticks"), py::arg("qty"))
         .def("depth",
              [](const tes::MatchingEngine& self, std::size_t levels) {
                  return depth_to_py(self.depth(levels));

@@ -24,6 +24,7 @@ class MatchingEngine {
                                                        TimeInForce time_in_force = TimeInForce::Gtc);
     [[nodiscard]] std::vector<Event> place_market_order(Side side, Qty qty);
     [[nodiscard]] std::vector<Event> cancel(OrderId id);
+    [[nodiscard]] std::vector<Event> replace_order(OrderId id, Price new_price, Qty new_qty);
     [[nodiscard]] BookDepth depth(std::size_t levels) const;
 
     [[nodiscard]] const OrderBook& book() const {
@@ -31,6 +32,8 @@ class MatchingEngine {
     }
 
   private:
+    [[nodiscard]] std::vector<Event> place_limit_order_with_id(OrderId taker_id, Side side, Price price, Qty qty,
+                                                               TimeInForce tif);
     void maybe_emit_top_of_book_change(std::vector<Event>& events, const std::optional<Price>& previous_best_bid,
                                        const std::optional<Price>& previous_best_ask);
 

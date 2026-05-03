@@ -86,6 +86,31 @@ namespace {
         event);
 }
 
+
+[[nodiscard]] py::dict depth_to_py(const tes::BookDepth& depth) {
+    auto level_to_py = [](const tes::PriceLevel& level) {
+        py::dict out;
+        out["price"] = level.price.ticks;
+        out["qty"] = level.qty.value;
+        return out;
+    };
+
+    py::list bids;
+    for (const tes::PriceLevel& level : depth.bids) {
+        bids.append(level_to_py(level));
+    }
+
+    py::list asks;
+    for (const tes::PriceLevel& level : depth.asks) {
+        asks.append(level_to_py(level));
+    }
+
+    py::dict out;
+    out["bids"] = bids;
+    out["asks"] = asks;
+    return out;
+}
+
 [[nodiscard]] std::vector<py::dict> events_to_dicts(const std::vector<tes::Event>& events) {
     std::vector<py::dict> out;
     out.reserve(events.size());
@@ -115,5 +140,10 @@ PYBIND11_MODULE(tes_engine, m) {
                  const std::vector<tes::Event> events = self.cancel(order_id);
                  return events_to_dicts(events);
              },
-             py::arg("order_id"));
+             py::arg("order_id"))
+        .def("depth",
+             [](const tes::MatchingEngine& self, std::size_t levels) {
+                 return depth_to_py(self.depth(levels));
+             },
+             py::arg("levels"));
 }

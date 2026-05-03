@@ -281,6 +281,71 @@ TEST_CASE("invalid quantity order is rejected") {
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
 
+TEST_CASE("market buy full fill") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Bid, tes::Qty{5});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].qty.value == 5);
+    CHECK(trades[0].taker_side == tes::Side::Bid);
+    const std::optional<tes::TopOfBook> top = last_top_of_book(events);
+    REQUIRE(top.has_value());
+    CHECK_FALSE(top->best_ask.has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
+TEST_CASE("market buy partial fill") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Bid, tes::Qty{5});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].qty.value == 3);
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+    CHECK_FALSE(engine.book().best_bid().has_value());
+}
+
+TEST_CASE("market sell full fill") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{99}, tes::Qty{4});
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Ask, tes::Qty{4});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].price.ticks == 99);
+    CHECK(trades[0].qty.value == 4);
+    CHECK(trades[0].taker_side == tes::Side::Ask);
+    CHECK_FALSE(engine.book().best_bid().has_value());
+}
+
+TEST_CASE("market order with no liquidity is rejected") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Bid, tes::Qty{5});
+
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(events[0]));
+    CHECK(std::get<tes::OrderRejected>(events[0]).reason == tes::RejectReason::NoLiquidity);
+}
+
+TEST_CASE("market order invalid quantity is rejected") {
+    tes::MatchingEngine engine;
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Ask, tes::Qty{0});
+
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(events[0]));
+    CHECK(std::get<tes::OrderRejected>(events[0]).reason == tes::RejectReason::InvalidQuantity);
+}
+
 TEST_CASE("cancel unknown order id is rejected") {
     tes::MatchingEngine engine;
 

@@ -9,8 +9,12 @@
 namespace tes {
 
 std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty) {
-    if (!is_valid_price(price) || !is_valid_qty(qty)) {
-        return {};
+    if (!is_valid_price(price)) {
+        return {OrderRejected{side, price, qty, RejectReason::InvalidPrice}};
+    }
+
+    if (!is_valid_qty(qty)) {
+        return {OrderRejected{side, price, qty, RejectReason::InvalidQuantity}};
     }
 
     const OrderId taker_id = next_order_id_;
@@ -65,7 +69,11 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
 }
 
 std::vector<Event> MatchingEngine::cancel(OrderId id) {
-    return book_.cancel(id);
+    const std::vector<Event> events = book_.cancel(id);
+    if (events.empty()) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId}};
+    }
+    return events;
 }
 
 BookDepth MatchingEngine::depth(std::size_t levels) const {

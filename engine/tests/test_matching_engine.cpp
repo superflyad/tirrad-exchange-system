@@ -246,17 +246,23 @@ TEST_CASE("fully filled incoming order does not rest after sweeping multiple lev
     CHECK_FALSE(engine.book().best_bid().has_value());
 }
 
-TEST_CASE("invalid price order is ignored") {
+TEST_CASE("invalid price order is rejected") {
     tes::MatchingEngine engine;
 
     const std::vector<tes::Event> events = engine.place_limit_order(tes::Side::Bid, tes::Price{-1}, tes::Qty{5});
 
-    CHECK(events.empty());
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(events[0]));
+    const tes::OrderRejected rejected = std::get<tes::OrderRejected>(events[0]);
+    CHECK(rejected.side == tes::Side::Bid);
+    CHECK(rejected.price.ticks == -1);
+    CHECK(rejected.qty.value == 5);
+    CHECK(rejected.reason == tes::RejectReason::InvalidPrice);
     CHECK_FALSE(engine.book().best_bid().has_value());
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
 
-TEST_CASE("invalid quantity order is ignored") {
+TEST_CASE("invalid quantity order is rejected") {
     tes::MatchingEngine engine;
 
     const std::vector<tes::Event> zero_qty_events =
@@ -264,21 +270,30 @@ TEST_CASE("invalid quantity order is ignored") {
     const std::vector<tes::Event> negative_qty_events =
         engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{-3});
 
-    CHECK(zero_qty_events.empty());
-    CHECK(negative_qty_events.empty());
+    REQUIRE(zero_qty_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(zero_qty_events[0]));
+    CHECK(std::get<tes::OrderRejected>(zero_qty_events[0]).reason == tes::RejectReason::InvalidQuantity);
+
+    REQUIRE(negative_qty_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(negative_qty_events[0]));
+    CHECK(std::get<tes::OrderRejected>(negative_qty_events[0]).reason == tes::RejectReason::InvalidQuantity);
     CHECK_FALSE(engine.book().best_bid().has_value());
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
 
-TEST_CASE("cancel unknown order id returns no events") {
+TEST_CASE("cancel unknown order id is rejected") {
     tes::MatchingEngine engine;
 
     const std::vector<tes::Event> events = engine.cancel(999);
 
-    CHECK(events.empty());
+    REQUIRE(events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(events[0]));
+    const tes::CancelRejected rejected = std::get<tes::CancelRejected>(events[0]);
+    CHECK(rejected.id == 999);
+    CHECK(rejected.reason == tes::RejectReason::UnknownOrderId);
 }
 
-TEST_CASE("cancel already canceled order id returns no events") {
+TEST_CASE("cancel already canceled order id is rejected") {
     tes::MatchingEngine engine;
     (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{2});
 
@@ -288,10 +303,13 @@ TEST_CASE("cancel already canceled order id returns no events") {
     REQUIRE(first_cancel.size() == 2);
     CHECK(std::holds_alternative<tes::OrderCanceled>(first_cancel[0]));
     CHECK(std::holds_alternative<tes::TopOfBook>(first_cancel[1]));
-    CHECK(second_cancel.empty());
+    REQUIRE(second_cancel.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(second_cancel[0]));
+    CHECK(std::get<tes::CancelRejected>(second_cancel[0]).id == 1);
+    CHECK(std::get<tes::CancelRejected>(second_cancel[0]).reason == tes::RejectReason::UnknownOrderId);
 }
 
-TEST_CASE("cancel fully filled order id returns no events") {
+TEST_CASE("cancel fully filled order id is rejected") {
     tes::MatchingEngine engine;
 
     (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
@@ -299,7 +317,10 @@ TEST_CASE("cancel fully filled order id returns no events") {
     REQUIRE(collect_trades(trade_events).size() == 1);
 
     const std::vector<tes::Event> cancel_events = engine.cancel(1);
-    CHECK(cancel_events.empty());
+    REQUIRE(cancel_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(cancel_events[0]));
+    CHECK(std::get<tes::CancelRejected>(cancel_events[0]).id == 1);
+    CHECK(std::get<tes::CancelRejected>(cancel_events[0]).reason == tes::RejectReason::UnknownOrderId);
 }
 
 TEST_CASE("cancel non-best order does not mutate top of book") {

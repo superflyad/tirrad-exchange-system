@@ -9,13 +9,6 @@
 namespace tes {
 
 std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty, TimeInForce tif) {
-    const OrderId taker_id = next_order_id_;
-    ++next_order_id_;
-    return place_limit_order_with_id(taker_id, side, price, qty, tif);
-}
-
-std::vector<Event> MatchingEngine::place_limit_order_with_id(OrderId taker_id, Side side, Price price, Qty qty,
-                                                              TimeInForce tif) {
     if (!is_valid_price(price)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidPrice}};
     }

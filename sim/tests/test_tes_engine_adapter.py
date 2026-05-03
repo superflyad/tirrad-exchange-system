@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from sim.tes_engine_adapter import execute_command, execute_commands
-from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand
+from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, MarketOrderCommand
 
 
 def test_execute_limit_order_command_returns_models() -> None:
@@ -89,3 +89,48 @@ def test_cancel_unknown_order_produces_cancel_rejected() -> None:
 
     rejected = next(event for event in events if event.type == "CancelRejected")
     assert rejected.data.reason == "UnknownOrderId"
+
+
+def test_market_order_command_produces_trade_executed() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=10))
+
+    events = execute_command(engine, MarketOrderCommand(side="BUY", qty=5))
+
+    assert any(event.type == "TradeExecuted" for event in events)
+
+
+def test_ioc_partial_fill_cancels_remainder() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5, time_in_force="IOC"))
+
+    assert any(event.type == "TradeExecuted" for event in events)
+    assert any(event.type == "OrderCanceled" for event in events)
+
+
+def test_fok_failure_cancels_order_without_trade() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3))
+
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=5, time_in_force="FOK"))
+
+    assert any(event.type == "OrderCanceled" for event in events)
+    assert not any(event.type == "TradeExecuted" for event in events)
+
+
+def test_market_rejection_is_parsed_with_no_liquidity_reason() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = execute_command(engine, MarketOrderCommand(side="BUY", qty=5))
+
+    rejected = next(event for event in events if event.type == "OrderRejected")
+    assert rejected.data.reason == "NoLiquidity"

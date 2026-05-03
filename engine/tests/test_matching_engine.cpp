@@ -281,6 +281,55 @@ TEST_CASE("invalid quantity order is rejected") {
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
 
+
+TEST_CASE("market buy sweeps asks from lowest price upward and never rests") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{2});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{102}, tes::Qty{4});
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Bid, tes::Qty{7});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 3);
+    CHECK(trades[0].price.ticks == 100);
+    CHECK(trades[0].qty.value == 3);
+    CHECK(trades[1].price.ticks == 101);
+    CHECK(trades[1].qty.value == 2);
+    CHECK(trades[2].price.ticks == 102);
+    CHECK(trades[2].qty.value == 2);
+
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    CHECK_FALSE(engine.book().best_bid().has_value());
+    REQUIRE(engine.book().best_ask().has_value());
+    CHECK(engine.book().best_ask()->ticks == 102);
+}
+
+TEST_CASE("market sell sweeps bids from highest price downward and never rests") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{99}, tes::Qty{2});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{3});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{4});
+
+    const std::vector<tes::Event> events = engine.place_market_order(tes::Side::Ask, tes::Qty{8});
+    const std::vector<tes::TradeExecuted> trades = collect_trades(events);
+
+    REQUIRE(trades.size() == 3);
+    CHECK(trades[0].price.ticks == 101);
+    CHECK(trades[0].qty.value == 3);
+    CHECK(trades[1].price.ticks == 100);
+    CHECK(trades[1].qty.value == 4);
+    CHECK(trades[2].price.ticks == 99);
+    CHECK(trades[2].qty.value == 1);
+
+    CHECK_FALSE(find_order_accepted(events).has_value());
+    CHECK_FALSE(engine.book().best_ask().has_value());
+    REQUIRE(engine.book().best_bid().has_value());
+    CHECK(engine.book().best_bid()->ticks == 99);
+}
+
 TEST_CASE("market buy full fill") {
     tes::MatchingEngine engine;
     (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});

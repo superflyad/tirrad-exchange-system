@@ -187,6 +187,39 @@ def test_fok_insufficient_qty_does_not_mutate_book() -> None:
 
 
 def test_fok_respects_limit_price_and_does_not_cross_higher_level() -> None:
+def test_market_buy_sweeps_lowest_ask_first_and_never_rests() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="SELL", price=101, qty=2))
+    execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3))
+    execute_command(engine, LimitOrderCommand(side="SELL", price=102, qty=4))
+
+    events = execute_command(engine, MarketOrderCommand(side="BUY", qty=7))
+
+    trades = [event for event in events if event.type == "TradeExecuted"]
+    assert [trade.data.price for trade in trades] == [100, 101, 102]
+    assert [trade.data.qty for trade in trades] == [3, 2, 2]
+    assert not any(event.type == "OrderAccepted" for event in events)
+
+
+def test_market_sell_sweeps_highest_bid_first_and_never_rests() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    execute_command(engine, LimitOrderCommand(side="BUY", price=99, qty=2))
+    execute_command(engine, LimitOrderCommand(side="BUY", price=101, qty=3))
+    execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=4))
+
+    events = execute_command(engine, MarketOrderCommand(side="SELL", qty=8))
+
+    trades = [event for event in events if event.type == "TradeExecuted"]
+    assert [trade.data.price for trade in trades] == [101, 100, 99]
+    assert [trade.data.qty for trade in trades] == [3, 4, 1]
+    assert not any(event.type == "OrderAccepted" for event in events)
+
+
+def test_partial_market_fill_emits_trade_and_lifecycle_events() -> None:
     import tes_engine
 
     engine = tes_engine.MatchingEngine()
@@ -202,3 +235,14 @@ def test_fok_respects_limit_price_and_does_not_cross_higher_level() -> None:
     assert depth["asks"][0]["qty"] == 3
     assert depth["asks"][1]["price"] == 101
     assert depth["asks"][1]["qty"] == 3
+
+    events = execute_command(engine, MarketOrderCommand(side="BUY", qty=5))
+
+    assert [event.type for event in events] == ["TradeExecuted", "OrderPartiallyFilled", "TopOfBook"]
+    trade = events[0]
+    partial = events[1]
+    assert trade.data.price == 100
+    assert trade.data.qty == 3
+    assert partial.data.last_fill_qty == 3
+    assert partial.data.remaining_qty == 2
+

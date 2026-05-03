@@ -10,6 +10,19 @@ def test_parse_order_accepted() -> None:
     assert event.type == "OrderAccepted"
 
 
+
+
+def test_parse_order_rejected() -> None:
+    event = parse_event(
+        {"type": "OrderRejected", "data": {"side": "BUY", "price": -1, "qty": 10, "reason": "InvalidPrice"}}
+    )
+    assert event.type == "OrderRejected"
+
+
+def test_parse_cancel_rejected() -> None:
+    event = parse_event({"type": "CancelRejected", "data": {"order_id": 999, "reason": "UnknownOrderId"}})
+    assert event.type == "CancelRejected"
+
 def test_parse_order_canceled() -> None:
     event = parse_event({"type": "OrderCanceled", "data": {"order_id": 1}})
     assert event.type == "OrderCanceled"

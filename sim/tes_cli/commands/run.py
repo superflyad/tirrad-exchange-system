@@ -6,7 +6,12 @@ import argparse
 from importlib import import_module
 
 from sim.tes_models.commands import TesCommand
-from sim.tes_models.events import OrderAcceptedEvent, TradeExecutedEvent
+from sim.tes_models.events import (
+    CancelRejectedEvent,
+    OrderAcceptedEvent,
+    OrderRejectedEvent,
+    TradeExecutedEvent,
+)
 from sim.tes_strategy.registry import get_strategy
 
 
@@ -53,6 +58,22 @@ def _format_event(event: object) -> str:
             f"side={event.data.side}, "
             f"price={event.data.price}, "
             f"qty={event.data.qty}"
+            ")"
+        )
+    if isinstance(event, OrderRejectedEvent):
+        return (
+            "OrderRejected("
+            f"side={event.data.side}, "
+            f"price={event.data.price}, "
+            f"qty={event.data.qty}, "
+            f"reason={event.data.reason}"
+            ")"
+        )
+    if isinstance(event, CancelRejectedEvent):
+        return (
+            "CancelRejected("
+            f"order_id={event.data.order_id}, "
+            f"reason={event.data.reason}"
             ")"
         )
     if isinstance(event, TradeExecutedEvent):

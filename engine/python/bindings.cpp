@@ -151,6 +151,19 @@ namespace {
     return out;
 }
 
+[[nodiscard]] tes::TimeInForce tif_from_string(const std::string& time_in_force) {
+    if (time_in_force == "GTC") {
+        return tes::TimeInForce::Gtc;
+    }
+    if (time_in_force == "IOC") {
+        return tes::TimeInForce::Ioc;
+    }
+    if (time_in_force == "FOK") {
+        return tes::TimeInForce::Fok;
+    }
+    throw std::invalid_argument("time_in_force must be one of: GTC, IOC, FOK");
+}
+
 }  // namespace
 
 PYBIND11_MODULE(tes_engine, m) {
@@ -159,10 +172,12 @@ PYBIND11_MODULE(tes_engine, m) {
     py::class_<tes::MatchingEngine>(m, "MatchingEngine")
         .def(py::init<>())
         .def("place_limit_order",
-             [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty) {
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty,
+                const std::string& time_in_force) {
                  const tes::Side parsed_side = side_from_string(side);
+                 const tes::TimeInForce parsed_tif = tif_from_string(time_in_force);
                  const std::vector<tes::Event> events =
-                     self.place_limit_order(parsed_side, tes::Price{price_ticks}, tes::Qty{qty});
+                     self.place_limit_order(parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
                  return events_to_dicts(events);
              },
              py::arg("side"), py::arg("price_ticks"), py::arg("qty"))

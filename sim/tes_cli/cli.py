@@ -41,6 +41,12 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--strategy", required=True)
     run_parser.set_defaults(func=_handle_run, handler=_handle_run)
 
+    list_strategies_parser = sim_subparsers.add_parser(
+        "list-strategies",
+        help="List available strategies",
+    )
+    list_strategies_parser.set_defaults(handler=_handle_list_strategies)
+
     return parser
 
 
@@ -78,6 +84,12 @@ def _handle_replay(args: argparse.Namespace) -> int:
     from sim.tes_cli.commands.replay import replay_saved_run
 
     return int(replay_saved_run(run_id=args.run_id, base_dir=Path(args.runs_dir)))
+
+
+def _handle_list_strategies(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.list_strategies import handle_list_strategies
+
+    return int(handle_list_strategies(args))
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -8,7 +8,11 @@
 
 namespace tes {
 
-std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty, TimeInForce time_in_force) {
+std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty) {
+    return place_limit_order(side, price, qty, TimeInForce::Gtc);
+}
+
+std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty, TimeInForce tif) {
     if (!is_valid_price(price)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidPrice}};
     }
@@ -67,12 +71,46 @@ std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
     }
 
-    if (remaining.value > 0 && time_in_force == TimeInForce::Gtc) {
-        const std::vector<Event> rest_events =
-            book_.add_limit_order(Order{taker_id, side, price, Qty{remaining.value}});
-        events.insert(events.end(), rest_events.begin(), rest_events.end());
-    } else if (remaining.value > 0 && time_in_force == TimeInForce::Ioc) {
-        events.emplace_back(OrderCanceled{taker_id});
+    if (remaining.value > 0) {
+        if (tif == TimeInForce::Ioc) {
+            events.emplace_back(OrderCanceled{taker_id});
+        } else {
+            const std::vector<Event> rest_events =
+                book_.add_limit_order(Order{taker_id, side, price, Qty{remaining.value}});
+            events.insert(events.end(), rest_events.begin(), rest_events.end());
+        }
+    }
+
+    return events;
+}
+
+std::vector<Event> MatchingEngine::place_market_order(Side side, Qty qty) {
+    if (!is_valid_qty(qty)) {
+        return {OrderRejected{side, Price{0}, qty, RejectReason::InvalidQuantity}};
+    }
+
+    const std::optional<Price> best_opposite = side == Side::Bid ? book_.best_ask() : book_.best_bid();
+    if (!best_opposite.has_value()) {
+        return {OrderRejected{side, Price{0}, qty, RejectReason::NoLiquidity}};
+    }
+
+    const OrderId taker_id = next_order_id_;
+    ++next_order_id_;
+
+    std::vector<Event> events;
+    Qty remaining = qty;
+
+    while (remaining.value > 0) {
+        const std::optional<Price> previous_best_bid = book_.best_bid();
+        const std::optional<Price> previous_best_ask = book_.best_ask();
+        const auto fill = book_.fill_best(side == Side::Bid ? Side::Ask : Side::Bid, remaining);
+        if (!fill.has_value()) {
+            break;
+        }
+
+        remaining.value -= fill->qty.value;
+        events.emplace_back(TradeExecuted{taker_id, fill->maker_id, side, fill->price, fill->qty});
+        maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
     }
 
     return events;

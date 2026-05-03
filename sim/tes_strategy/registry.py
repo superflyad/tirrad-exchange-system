@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sim.tes_strategy.examples import CrossingTakerStrategy
 from sim.tes_strategy.strategy import SimpleMarketMaker, Strategy
 
 StrategyFactory = Callable[[], Strategy]
 
 STRATEGY_REGISTRY: dict[str, StrategyFactory] = {
+    "crossing_taker": CrossingTakerStrategy,
     "simple_market_maker": SimpleMarketMaker,
 }
 

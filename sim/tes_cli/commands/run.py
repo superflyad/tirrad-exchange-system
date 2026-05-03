@@ -7,19 +7,13 @@ import argparse
 import tes_engine
 from sim.tes_models.commands import TesCommand
 from sim.tes_simulation.runner import execute_command
-from sim.tes_strategy.strategy import SimpleMarketMaker, Strategy
-
-
-def _load_strategy(name: str) -> Strategy:
-    if name == "simple_market_maker":
-        return SimpleMarketMaker()
-    raise ValueError(f"Unknown strategy: {name}")
+from sim.tes_strategy.registry import get_strategy
 
 
 def handle_run(args: argparse.Namespace) -> int:
     """Execute a strategy-driven simulation run and print summary."""
     try:
-        strategy = _load_strategy(args.strategy)
+        strategy = get_strategy(args.strategy)
     except ValueError as exc:
         print(str(exc))
         return 1

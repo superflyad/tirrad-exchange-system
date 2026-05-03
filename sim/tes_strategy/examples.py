@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sim.tes_models.commands import LimitOrderCommand, TesCommand
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 from sim.tes_strategy.strategy import Strategy
 
 
@@ -14,6 +14,6 @@ class CrossingTakerStrategy(Strategy):
             LimitOrderCommand(side="SELL", price=100, qty=5),
         ]
 
-    def on_event(self, event: TesEvent) -> list[TesCommand]:
+    def on_event(self, event: TesEngineEvent) -> list[TesCommand]:
         _ = event
         return []

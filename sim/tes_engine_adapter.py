@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from sim.tes_models import TesEvent, parse_events
+from sim.tes_models import TesEngineEvent, parse_events
 from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, MarketOrderCommand, TesCommand
 
 
-def execute_command(engine: Any, command: TesCommand) -> list[TesEvent]:
+def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
     if isinstance(command, LimitOrderCommand):
         side = "Bid" if command.side == "BUY" else "Ask"
         return parse_events(engine.place_limit_order(side, command.price, command.qty, command.time_in_force))
@@ -21,8 +21,8 @@ def execute_command(engine: Any, command: TesCommand) -> list[TesEvent]:
     raise TypeError(f"unsupported command type: {type(command).__name__}")
 
 
-def execute_commands(engine: Any, commands: list[TesCommand]) -> list[TesEvent]:
-    events: list[TesEvent] = []
+def execute_commands(engine: Any, commands: list[TesCommand]) -> list[TesEngineEvent]:
+    events: list[TesEngineEvent] = []
     for command in commands:
         events.extend(execute_command(engine, command))
     return events

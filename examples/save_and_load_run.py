@@ -6,17 +6,17 @@ from typing import Any
 
 import tes_engine
 from sim.tes_models.commands import LimitOrderCommand
-from sim.tes_models.events import TesEvent, parse_events
+from sim.tes_models.events import TesEngineEvent, parse_events
 from sim.tes_serialization import serialize_events
 from sim.tes_simulation.runner import run_simulation
 
 
-def _save_run_fallback(path: Path, events: list[TesEvent]) -> None:
+def _save_run_fallback(path: Path, events: list[TesEngineEvent]) -> None:
     payload = {"events": serialize_events(events)}
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _load_run_fallback(path: Path) -> list[TesEvent]:
+def _load_run_fallback(path: Path) -> list[TesEngineEvent]:
     payload: Any = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("saved payload must be a dict")

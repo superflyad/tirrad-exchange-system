@@ -3,19 +3,19 @@ from __future__ import annotations
 from sim.tes_analytics import count_events, count_trades, total_traded_qty, traded_notional
 from sim.tes_models.events import (
     OrderAcceptedData,
-    OrderAcceptedEvent,
+    OrderAccepted,
     OrderCanceledData,
-    OrderCanceledEvent,
-    TesEvent,
+    OrderCanceled,
+    TesEngineEvent,
     TopOfBookData,
-    TopOfBookEvent,
+    TopOfBook,
     TradeExecutedData,
-    TradeExecutedEvent,
+    TradeExecuted,
 )
 
 
 def test_empty_events() -> None:
-    events: list[TesEvent] = []
+    events: list[TesEngineEvent] = []
 
     assert count_events(events) == {}
     assert count_trades(events) == 0
@@ -24,9 +24,9 @@ def test_empty_events() -> None:
 
 
 def test_accepted_only_events() -> None:
-    events: list[TesEvent] = [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=2, side="SELL", price=101, qty=4)),
+    events: list[TesEngineEvent] = [
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=2, side="SELL", price=101, qty=4)),
     ]
 
     assert count_events(events) == {"OrderAccepted": 2}
@@ -36,8 +36,8 @@ def test_accepted_only_events() -> None:
 
 
 def test_one_trade() -> None:
-    events: list[TesEvent] = [
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=10, taker_order_id=20),
         )
@@ -50,16 +50,16 @@ def test_one_trade() -> None:
 
 
 def test_multiple_trades() -> None:
-    events: list[TesEvent] = [
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=10, taker_order_id=20),
         ),
-        TradeExecutedEvent(
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=95, qty=4, maker_order_id=11, taker_order_id=21),
         ),
-        TradeExecutedEvent(
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=110, qty=1, maker_order_id=12, taker_order_id=22),
         ),
@@ -72,15 +72,15 @@ def test_multiple_trades() -> None:
 
 
 def test_mixed_event_types() -> None:
-    events: list[TesEvent] = [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
-        TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
+        TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=101, qty=2, maker_order_id=1, taker_order_id=2),
         ),
-        OrderCanceledEvent(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
-        TradeExecutedEvent(
+        OrderCanceled(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=102, qty=3, maker_order_id=3, taker_order_id=4),
         ),

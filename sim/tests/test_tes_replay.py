@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from sim.tes_models.events import (
     OrderAcceptedData,
-    OrderAcceptedEvent,
+    OrderAccepted,
     OrderCanceledData,
-    OrderCanceledEvent,
-    TesEvent,
+    OrderCanceled,
+    TesEngineEvent,
     TopOfBookData,
-    TopOfBookEvent,
+    TopOfBook,
     TradeExecutedData,
-    TradeExecutedEvent,
+    TradeExecuted,
 )
 from sim.tes_replay import ReplayResult, replay_events
 
 
 def test_replay_empty_event_list() -> None:
-    events: list[TesEvent] = []
+    events: list[TesEngineEvent] = []
 
     result = replay_events(events)
 
@@ -24,14 +24,14 @@ def test_replay_empty_event_list() -> None:
 
 
 def test_replay_preserves_event_order() -> None:
-    events: list[TesEvent] = [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=101, qty=2, maker_order_id=1, taker_order_id=2),
         ),
-        TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=100, best_ask=102)),
-        OrderCanceledEvent(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
+        TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=100, best_ask=102)),
+        OrderCanceled(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
     ]
 
     result = replay_events(events)
@@ -43,16 +43,16 @@ def test_replay_preserves_event_order() -> None:
 
 
 def test_replay_counts_multiple_trade_events() -> None:
-    events: list[TesEvent] = [
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=10, taker_order_id=20),
         ),
-        TradeExecutedEvent(
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=99, qty=1, maker_order_id=11, taker_order_id=21),
         ),
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=2, side="SELL", price=103, qty=4)),
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=2, side="SELL", price=103, qty=4)),
     ]
 
     result = replay_events(events)

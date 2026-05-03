@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 
 
 @dataclass(frozen=True)
@@ -18,10 +18,10 @@ class SimulationSummary:
 class SimulationRunRecord:
     run_id: str
     summary: SimulationSummary
-    events: list[TesEvent]
+    events: list[TesEngineEvent]
 
 
-def build_simulation_summary(events: list[TesEvent], total_commands: int) -> SimulationSummary:
+def build_simulation_summary(events: list[TesEngineEvent], total_commands: int) -> SimulationSummary:
     if total_commands < 0:
         raise ValueError("total_commands must be >= 0")
 
@@ -38,7 +38,7 @@ def build_simulation_summary(events: list[TesEvent], total_commands: int) -> Sim
     )
 
 
-def build_run_record(run_id: str, events: list[TesEvent], total_commands: int) -> SimulationRunRecord:
+def build_run_record(run_id: str, events: list[TesEngineEvent], total_commands: int) -> SimulationRunRecord:
     if run_id == "":
         raise ValueError("run_id must be a non-empty string")
 

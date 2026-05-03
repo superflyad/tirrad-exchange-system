@@ -10,13 +10,13 @@ from sim.tes_models.events import *
 
 @dataclass(frozen=True)
 class SimulationResult:
-    events: list[TesEvent]
+    events: list[TesEngineEvent]
     total_commands: int
     total_events: int
 
 
-def run_commands(engine: tes_engine.MatchingEngine, commands: list[TesCommand]) -> list[TesEvent]:
-    events: list[TesEvent] = []
+def run_commands(engine: tes_engine.MatchingEngine, commands: list[TesCommand]) -> list[TesEngineEvent]:
+    events: list[TesEngineEvent] = []
     for command in commands:
         events.extend(execute_command(engine, command))
     return events

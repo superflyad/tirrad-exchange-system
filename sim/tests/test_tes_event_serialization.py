@@ -1,26 +1,26 @@
 from sim.tes_models.events import (
     OrderAcceptedData,
-    OrderAcceptedEvent,
+    OrderAccepted,
     OrderCanceledData,
-    OrderCanceledEvent,
-    TesEvent,
+    OrderCanceled,
+    TesEngineEvent,
     TopOfBookData,
-    TopOfBookEvent,
+    TopOfBook,
     TradeExecutedData,
-    TradeExecutedEvent,
+    TradeExecuted,
 )
 from sim.tes_serialization import serialize_event, serialize_events
 
 
-def _sample_events() -> list[TesEvent]:
+def _sample_events() -> list[TesEngineEvent]:
     return [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
-        OrderCanceledEvent(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
-        TradeExecutedEvent(
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10)),
+        OrderCanceled(type="OrderCanceled", data=OrderCanceledData(order_id=1)),
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=1, taker_order_id=2),
         ),
-        TopOfBookEvent(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
+        TopOfBook(type="TopOfBook", data=TopOfBookData(best_bid=99, best_ask=101)),
     ]
 
 
@@ -46,8 +46,8 @@ def test_serialization_contains_no_class_or_module_leakage() -> None:
         serialized_as_text = str(serialized_dict)
 
         assert "sim.tes_models" not in serialized_as_text
-        assert event.__class__.__name__ not in serialized_as_text
         assert event.data.__class__.__name__ not in serialized_as_text
+        assert "Data" not in serialized_as_text
         assert set(serialized_dict.keys()) == {"type", "data"}
 
 
@@ -59,7 +59,7 @@ def test_public_api_only_exports_expected_names() -> None:
 
 
 def test_serialized_event_shape_is_exact() -> None:
-    event = OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10))
+    event = OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=10))
     result = serialize_event(event)
 
     assert set(result.keys()) == {"type", "data"}

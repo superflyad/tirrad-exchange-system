@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sim.tes_models.commands import LimitOrderCommand, TesCommand
-from sim.tes_models.events import TesEvent
+from sim.tes_models.events import TesEngineEvent
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class Strategy:
     def on_start(self) -> list[TesCommand]:
         raise NotImplementedError
 
-    def on_event(self, event: TesEvent) -> list[TesCommand]:
+    def on_event(self, event: TesEngineEvent) -> list[TesCommand]:
         raise NotImplementedError
 
 
@@ -37,6 +37,6 @@ class SimpleMarketMaker(Strategy):
             LimitOrderCommand(side="SELL", price=self.ask_price, qty=self.order_qty),
         ]
 
-    def on_event(self, event: TesEvent) -> list[TesCommand]:
+    def on_event(self, event: TesEngineEvent) -> list[TesCommand]:
         _ = event
         return []

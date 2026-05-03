@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sim.tes_models.events import TesEvent, parse_events
+from sim.tes_models.events import TesEngineEvent, parse_events
 from sim.tes_serialization import serialize_events
 
 
-def write_events_jsonl(path: Path, events: list[TesEvent]) -> None:
+def write_events_jsonl(path: Path, events: list[TesEngineEvent]) -> None:
     serialized_events = serialize_events(events)
     with path.open("w", encoding="utf-8") as handle:
         for serialized_event in serialized_events:
@@ -15,7 +15,7 @@ def write_events_jsonl(path: Path, events: list[TesEvent]) -> None:
             handle.write("\n")
 
 
-def read_events_jsonl(path: Path) -> list[TesEvent]:
+def read_events_jsonl(path: Path) -> list[TesEngineEvent]:
     raw_events: list[dict[str, object]] = []
 
     with path.open("r", encoding="utf-8") as handle:

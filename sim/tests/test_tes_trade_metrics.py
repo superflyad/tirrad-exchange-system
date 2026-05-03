@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from sim.tes_analytics.trades import average_trade_price, total_traded_qty, total_trades, traded_notional
-from sim.tes_models.events import OrderAcceptedData, OrderAcceptedEvent, TesEvent, TradeExecutedData, TradeExecutedEvent
+from sim.tes_models.events import OrderAcceptedData, OrderAccepted, TesEngineEvent, TradeExecutedData, TradeExecuted
 
 
 def test_trade_metrics_empty_events() -> None:
-    events: list[TesEvent] = []
+    events: list[TesEngineEvent] = []
 
     assert total_trades(events) == 0
     assert total_traded_qty(events) == 0
@@ -14,8 +14,8 @@ def test_trade_metrics_empty_events() -> None:
 
 
 def test_trade_metrics_single_trade() -> None:
-    events: list[TesEvent] = [
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=10, taker_order_id=20),
         )
@@ -28,17 +28,17 @@ def test_trade_metrics_single_trade() -> None:
 
 
 def test_trade_metrics_multiple_trades_aggregated() -> None:
-    events: list[TesEvent] = [
-        OrderAcceptedEvent(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
-        TradeExecutedEvent(
+    events: list[TesEngineEvent] = [
+        OrderAccepted(type="OrderAccepted", data=OrderAcceptedData(order_id=1, side="BUY", price=100, qty=3)),
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=100, qty=5, maker_order_id=10, taker_order_id=20),
         ),
-        TradeExecutedEvent(
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=95, qty=4, maker_order_id=11, taker_order_id=21),
         ),
-        TradeExecutedEvent(
+        TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(price=110, qty=1, maker_order_id=12, taker_order_id=22),
         ),

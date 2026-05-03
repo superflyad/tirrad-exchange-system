@@ -244,6 +244,8 @@ TEST_CASE("fully filled incoming order does not rest after sweeping multiple lev
     CHECK_FALSE(find_order_accepted(events).has_value());
     CHECK_FALSE(engine.book().best_ask().has_value());
     CHECK_FALSE(engine.book().best_bid().has_value());
+}
+
 TEST_CASE("invalid price order is ignored") {
     tes::MatchingEngine engine;
 
@@ -313,6 +315,8 @@ TEST_CASE("cancel non-best order does not mutate top of book") {
     REQUIRE(engine.book().best_bid().has_value());
     CHECK(engine.book().best_bid()->ticks == 101);
     CHECK_FALSE(engine.book().best_ask().has_value());
+}
+
 TEST_CASE("depth on empty book is empty") {
     tes::MatchingEngine engine;
 

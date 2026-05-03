@@ -39,6 +39,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_parser = sim_subparsers.add_parser("run", help="Run a strategy simulation")
     run_parser.add_argument("--strategy", required=True)
+    run_parser.add_argument("--verbose", action="store_true", help="Show detailed commands/events/depth")
+    run_parser.add_argument("--depth-levels", type=int, default=5, help="Depth levels to print (>= 0)")
     run_parser.set_defaults(func=_handle_run, handler=_handle_run)
 
     list_strategies_parser = sim_subparsers.add_parser(

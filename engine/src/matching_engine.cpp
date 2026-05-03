@@ -68,6 +68,24 @@ std::vector<Event> MatchingEngine::cancel(OrderId id) {
     return book_.cancel(id);
 }
 
+BookDepth MatchingEngine::depth(std::size_t levels) const {
+    const OrderBook::Depth snapshot = book_.depth(levels);
+
+    BookDepth result;
+    result.bids.reserve(snapshot.bids.size());
+    result.asks.reserve(snapshot.asks.size());
+
+    for (const OrderBook::PriceLevel& level : snapshot.bids) {
+        result.bids.push_back(PriceLevel{level.price, level.qty});
+    }
+
+    for (const OrderBook::PriceLevel& level : snapshot.asks) {
+        result.asks.push_back(PriceLevel{level.price, level.qty});
+    }
+
+    return result;
+}
+
 void MatchingEngine::maybe_emit_top_of_book_change(std::vector<Event>& events, const std::optional<Price>& previous_best_bid,
                                                    const std::optional<Price>& previous_best_ask) {
     const std::optional<Price> current_best_bid = book_.best_bid();

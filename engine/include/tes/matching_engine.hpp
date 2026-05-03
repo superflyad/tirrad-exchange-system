@@ -8,10 +8,21 @@
 
 namespace tes {
 
+struct PriceLevel {
+    Price price;
+    Qty qty;
+};
+
+struct BookDepth {
+    std::vector<PriceLevel> bids;
+    std::vector<PriceLevel> asks;
+};
+
 class MatchingEngine {
   public:
     [[nodiscard]] std::vector<Event> place_limit_order(Side side, Price price, Qty qty);
     [[nodiscard]] std::vector<Event> cancel(OrderId id);
+    [[nodiscard]] BookDepth depth(std::size_t levels) const;
 
     [[nodiscard]] const OrderBook& book() const {
         return book_;

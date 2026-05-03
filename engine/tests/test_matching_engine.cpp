@@ -154,3 +154,92 @@ TEST_CASE("non crossing order rests without trade") {
     CHECK(top->best_bid->ticks == 104);
     CHECK(top->best_ask->ticks == 105);
 }
+
+TEST_CASE("depth on empty book is empty") {
+    tes::MatchingEngine engine;
+
+    const tes::BookDepth depth = engine.depth(5);
+    CHECK(depth.bids.empty());
+    CHECK(depth.asks.empty());
+}
+
+TEST_CASE("depth includes one bid level") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{7});
+
+    const tes::BookDepth depth = engine.depth(5);
+    REQUIRE(depth.bids.size() == 1);
+    CHECK(depth.bids[0].price.ticks == 101);
+    CHECK(depth.bids[0].qty.value == 7);
+    CHECK(depth.asks.empty());
+}
+
+TEST_CASE("depth includes one ask level") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{102}, tes::Qty{4});
+
+    const tes::BookDepth depth = engine.depth(5);
+    REQUIRE(depth.asks.size() == 1);
+    CHECK(depth.asks[0].price.ticks == 102);
+    CHECK(depth.asks[0].qty.value == 4);
+    CHECK(depth.bids.empty());
+}
+
+TEST_CASE("depth bids sorted descending by price") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{103}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+
+    const tes::BookDepth depth = engine.depth(5);
+    REQUIRE(depth.bids.size() == 3);
+    CHECK(depth.bids[0].price.ticks == 103);
+    CHECK(depth.bids[1].price.ticks == 101);
+    CHECK(depth.bids[2].price.ticks == 100);
+}
+
+TEST_CASE("depth asks sorted ascending by price") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{105}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{103}, tes::Qty{1});
+
+    const tes::BookDepth depth = engine.depth(5);
+    REQUIRE(depth.asks.size() == 3);
+    CHECK(depth.asks[0].price.ticks == 101);
+    CHECK(depth.asks[1].price.ticks == 103);
+    CHECK(depth.asks[2].price.ticks == 105);
+}
+
+TEST_CASE("depth aggregates quantities at same price") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{99}, tes::Qty{2});
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{99}, tes::Qty{3});
+
+    const tes::BookDepth depth = engine.depth(5);
+    REQUIRE(depth.bids.size() == 1);
+    CHECK(depth.bids[0].price.ticks == 99);
+    CHECK(depth.bids[0].qty.value == 5);
+}
+
+TEST_CASE("depth obeys level limit and zero levels") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{102}, tes::Qty{1});
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{103}, tes::Qty{1});
+
+    const tes::BookDepth limited = engine.depth(2);
+    REQUIRE(limited.asks.size() == 2);
+    CHECK(limited.asks[0].price.ticks == 101);
+    CHECK(limited.asks[1].price.ticks == 102);
+
+    const tes::BookDepth zero = engine.depth(0);
+    CHECK(zero.bids.empty());
+    CHECK(zero.asks.empty());
+}

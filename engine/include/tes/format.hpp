@@ -36,6 +36,8 @@ namespace tes {
             return "InvalidQuantity";
         case RejectReason::UnknownOrderId:
             return "UnknownOrderId";
+        case RejectReason::NoLiquidity:
+            return "NoLiquidity";
     }
 
     return "Unknown";

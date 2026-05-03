@@ -149,3 +149,30 @@ def test_run_verbose_book_depth_unavailable_when_missing_depth(
     assert returncode == 0
     assert "Book Depth" in out
     assert "<unavailable>" in out
+
+
+@pytest.mark.skipif(
+    not HAS_ENGINE,
+    reason="tes_engine extension not available",
+)
+def test_run_verbose_rejection_output(capsys: pytest.CaptureFixture[str]) -> None:
+    from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand
+
+    class RejectingStrategy:
+        def on_start(self) -> list[object]:
+            return [LimitOrderCommand(side="BUY", price=-1, qty=1), CancelOrderCommand(order_id=999)]
+
+        def on_event(self, _event: object) -> list[object]:
+            return []
+
+    original_get_strategy = run_command.get_strategy
+    run_command.get_strategy = lambda _name: RejectingStrategy()
+    try:
+        returncode = handle_run(argparse.Namespace(strategy="rejecting", verbose=True, depth_levels=1))
+    finally:
+        run_command.get_strategy = original_get_strategy
+
+    out = capsys.readouterr().out
+    assert returncode == 0
+    assert "OrderRejected(" in out
+    assert "CancelRejected(" in out

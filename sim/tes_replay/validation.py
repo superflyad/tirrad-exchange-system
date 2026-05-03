@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from sim.tes_models.events import OrderAcceptedEvent, OrderCanceledEvent, TesEvent, TopOfBookEvent, TradeExecutedEvent
+from sim.tes_models.events import (
+    CancelRejectedEvent,
+    OrderAcceptedEvent,
+    OrderCanceledEvent,
+    OrderRejectedEvent,
+    TesEvent,
+    TopOfBookEvent,
+    TradeExecutedEvent,
+)
 
 
 def validate_replay_events(events: list[TesEvent]) -> list[TesEvent]:
@@ -11,7 +19,17 @@ def validate_replay_events(events: list[TesEvent]) -> list[TesEvent]:
         if isinstance(event, dict):
             raise ValueError("events must contain TesEvent objects")
 
-        if not isinstance(event, (OrderAcceptedEvent, OrderCanceledEvent, TradeExecutedEvent, TopOfBookEvent)):
+        if not isinstance(
+            event,
+            (
+                OrderAcceptedEvent,
+                OrderRejectedEvent,
+                OrderCanceledEvent,
+                CancelRejectedEvent,
+                TradeExecutedEvent,
+                TopOfBookEvent,
+            ),
+        ):
             raise ValueError("events must contain TesEvent objects")
 
     return events

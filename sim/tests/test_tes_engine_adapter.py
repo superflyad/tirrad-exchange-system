@@ -69,3 +69,23 @@ def test_execute_command_rejects_unknown_command_type() -> None:
 
     with pytest.raises(TypeError):
         execute_command(engine, object())  # type: ignore[arg-type]
+
+
+def test_invalid_limit_order_produces_order_rejected() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = execute_command(engine, LimitOrderCommand(side="BUY", price=-1, qty=10))
+
+    rejected = next(event for event in events if event.type == "OrderRejected")
+    assert rejected.data.reason == "InvalidPrice"
+
+
+def test_cancel_unknown_order_produces_cancel_rejected() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = execute_command(engine, CancelOrderCommand(order_id=999))
+
+    rejected = next(event for event in events if event.type == "CancelRejected")
+    assert rejected.data.reason == "UnknownOrderId"

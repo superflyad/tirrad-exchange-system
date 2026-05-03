@@ -18,6 +18,20 @@ class OrderCanceledData:
 
 
 @dataclass(frozen=True)
+class OrderRejectedData:
+    side: Literal["BUY", "SELL"]
+    price: int
+    qty: int
+    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]
+
+
+@dataclass(frozen=True)
+class CancelRejectedData:
+    order_id: int
+    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]
+
+
+@dataclass(frozen=True)
 class TradeExecutedData:
     price: int
     qty: int
@@ -44,6 +58,18 @@ class OrderCanceledEvent:
 
 
 @dataclass(frozen=True)
+class OrderRejectedEvent:
+    type: Literal["OrderRejected"]
+    data: OrderRejectedData
+
+
+@dataclass(frozen=True)
+class CancelRejectedEvent:
+    type: Literal["CancelRejected"]
+    data: CancelRejectedData
+
+
+@dataclass(frozen=True)
 class TradeExecutedEvent:
     type: Literal["TradeExecuted"]
     data: TradeExecutedData
@@ -55,7 +81,14 @@ class TopOfBookEvent:
     data: TopOfBookData
 
 
-TesEvent: TypeAlias = OrderAcceptedEvent | OrderCanceledEvent | TradeExecutedEvent | TopOfBookEvent
+TesEvent: TypeAlias = (
+    OrderAcceptedEvent
+    | OrderRejectedEvent
+    | OrderCanceledEvent
+    | CancelRejectedEvent
+    | TradeExecutedEvent
+    | TopOfBookEvent
+)
 
 
 def _require_dict(value: Any, name: str) -> dict[str, Any]:
@@ -88,6 +121,12 @@ def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     return value
 
 
+def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId"]:
+    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId"}:
+        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId")
+    return value
+
+
 def parse_event(raw: dict[str, Any]) -> TesEvent:
     event = _require_dict(raw, "event")
     _require_exact_keys(event, {"type", "data"}, "event")
@@ -110,11 +149,33 @@ def parse_event(raw: dict[str, Any]) -> TesEvent:
             ),
         )
 
+    if event_type == "OrderRejected":
+        _require_exact_keys(data, {"side", "price", "qty", "reason"}, "OrderRejected.data")
+        return OrderRejectedEvent(
+            type="OrderRejected",
+            data=OrderRejectedData(
+                side=_require_side(data["side"]),
+                price=_require_int(data["price"], "price"),
+                qty=_require_int(data["qty"], "qty"),
+                reason=_require_reject_reason(data["reason"]),
+            ),
+        )
+
     if event_type == "OrderCanceled":
         _require_exact_keys(data, {"order_id"}, "OrderCanceled.data")
         return OrderCanceledEvent(
             type="OrderCanceled",
             data=OrderCanceledData(order_id=_require_int(data["order_id"], "order_id")),
+        )
+
+    if event_type == "CancelRejected":
+        _require_exact_keys(data, {"order_id", "reason"}, "CancelRejected.data")
+        return CancelRejectedEvent(
+            type="CancelRejected",
+            data=CancelRejectedData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                reason=_require_reject_reason(data["reason"]),
+            ),
         )
 
     if event_type == "TradeExecuted":

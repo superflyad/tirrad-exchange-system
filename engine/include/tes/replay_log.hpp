@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <tes/events.hpp>
+#include <tes/matching_engine.hpp>
 #include <tes/types.hpp>
 
 namespace tes {
@@ -164,5 +165,29 @@ class ReplayLog {
     std::vector<ReplayEntry> entries_;
     std::size_t next_sequence_{0};
 };
+
+[[nodiscard]] inline std::vector<std::vector<Event>> replay_commands(const std::vector<ReplayEntry>& entries) {
+    MatchingEngine engine;
+    std::vector<std::vector<Event>> replayed_events;
+    replayed_events.reserve(entries.size());
+
+    for (const ReplayEntry& entry : entries) {
+        std::vector<Event> events = std::visit(
+            [&engine](const auto& command) {
+                using T = std::decay_t<decltype(command)>;
+                if constexpr (std::is_same_v<T, LimitOrderCommand>) {
+                    return engine.place_limit_order(command.side, command.price, command.qty);
+                } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
+                    return engine.place_market_order(command.side, command.qty);
+                } else {
+                    return engine.cancel(command.id);
+                }
+            },
+            entry.command);
+        replayed_events.push_back(std::move(events));
+    }
+
+    return replayed_events;
+}
 
 }  // namespace tes

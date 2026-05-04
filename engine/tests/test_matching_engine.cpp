@@ -281,6 +281,46 @@ TEST_CASE("invalid quantity order is rejected") {
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
 
+TEST_CASE("filled order cannot be canceled or replaced") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    const std::vector<tes::Event> fill_events = engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5});
+
+    bool saw_fill = false;
+    for (const tes::Event& event : fill_events) {
+        if (std::holds_alternative<tes::OrderFilled>(event)) {
+            saw_fill = true;
+            break;
+        }
+    }
+    REQUIRE(saw_fill);
+
+    const std::vector<tes::Event> cancel_events = engine.cancel(2);
+    REQUIRE(cancel_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(cancel_events[0]));
+    CHECK(std::get<tes::CancelRejected>(cancel_events[0]).id == 2);
+
+    const std::vector<tes::Event> replace_events = engine.replace_order(2, tes::Price{101}, tes::Qty{5});
+    REQUIRE(replace_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(replace_events[0]));
+    CHECK(std::get<tes::CancelRejected>(replace_events[0]).id == 2);
+}
+
+TEST_CASE("canceled orders cannot be reused by replace") {
+    tes::MatchingEngine engine;
+
+    (void)engine.place_limit_order(tes::Side::Bid, tes::Price{100}, tes::Qty{5});
+    const std::vector<tes::Event> cancel_events = engine.cancel(1);
+    REQUIRE(cancel_events.size() >= 1);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(cancel_events[0]));
+
+    const std::vector<tes::Event> replace_events = engine.replace_order(1, tes::Price{99}, tes::Qty{5});
+    REQUIRE(replace_events.size() == 1);
+    REQUIRE(std::holds_alternative<tes::CancelRejected>(replace_events[0]));
+    CHECK(std::get<tes::CancelRejected>(replace_events[0]).id == 1);
+}
+
 
 TEST_CASE("market buy sweeps asks from lowest price upward and never rests") {
     tes::MatchingEngine engine;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 #include <tes/events.hpp>
@@ -32,13 +33,17 @@ class MatchingEngine {
     }
 
   private:
+    enum class OrderLifecycleState { Accepted, PartiallyFilled, Filled, Canceled };
+
     [[nodiscard]] std::vector<Event> place_limit_order_with_id(OrderId taker_id, Side side, Price price, Qty qty,
                                                                TimeInForce tif);
     void maybe_emit_top_of_book_change(std::vector<Event>& events, const std::optional<Price>& previous_best_bid,
                                        const std::optional<Price>& previous_best_ask);
+    void track_events(const std::vector<Event>& events);
 
     OrderBook book_;
     OrderId next_order_id_ = 1;
+    std::unordered_map<OrderId, OrderLifecycleState> lifecycle_state_by_id_;
 };
 
 }  // namespace tes

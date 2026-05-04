@@ -1,5 +1,6 @@
 #include <tes/matching_engine.hpp>
 
+#include <cassert>
 #include <algorithm>
 #include <optional>
 #include <vector>
@@ -11,7 +12,9 @@ namespace tes {
 std::vector<Event> MatchingEngine::place_limit_order(Side side, Price price, Qty qty, TimeInForce tif) {
     const OrderId taker_id = next_order_id_;
     ++next_order_id_;
-    return place_limit_order_with_id(taker_id, side, price, qty, tif);
+    std::vector<Event> events = place_limit_order_with_id(taker_id, side, price, qty, tif);
+    track_events(events);
+    return events;
 }
 
 std::vector<Event> MatchingEngine::place_limit_order_with_id(OrderId taker_id, Side side, Price price, Qty qty,
@@ -128,18 +131,34 @@ std::vector<Event> MatchingEngine::place_market_order(Side side, Qty qty) {
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
     }
 
+    track_events(events);
     return events;
 }
 
 std::vector<Event> MatchingEngine::cancel(OrderId id) {
+    const auto lifecycle_it = lifecycle_state_by_id_.find(id);
+    if (lifecycle_it != lifecycle_state_by_id_.end() &&
+        lifecycle_it->second != OrderLifecycleState::Accepted &&
+        lifecycle_it->second != OrderLifecycleState::PartiallyFilled) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId}};
+    }
+
     const std::vector<Event> events = book_.cancel(id);
     if (events.empty()) {
         return {CancelRejected{id, RejectReason::UnknownOrderId}};
     }
+    track_events(events);
     return events;
 }
 
 std::vector<Event> MatchingEngine::replace_order(OrderId id, Price new_price, Qty new_qty) {
+    const auto lifecycle_it = lifecycle_state_by_id_.find(id);
+    if (lifecycle_it != lifecycle_state_by_id_.end() &&
+        lifecycle_it->second != OrderLifecycleState::Accepted &&
+        lifecycle_it->second != OrderLifecycleState::PartiallyFilled) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId}};
+    }
+
     const std::optional<Order> existing = book_.find_order(id);
     if (!existing.has_value()) {
         return {CancelRejected{id, RejectReason::UnknownOrderId}};
@@ -152,8 +171,10 @@ std::vector<Event> MatchingEngine::replace_order(OrderId id, Price new_price, Qt
     }
 
     std::vector<Event> events = book_.cancel(id);
+    track_events(events);
     std::vector<Event> placement = place_limit_order_with_id(id, existing->side, new_price, new_qty, TimeInForce::Gtc);
     events.insert(events.end(), placement.begin(), placement.end());
+    track_events(placement);
     return events;
 }
 
@@ -182,6 +203,47 @@ void MatchingEngine::maybe_emit_top_of_book_change(std::vector<Event>& events, c
 
     if (previous_best_bid != current_best_bid || previous_best_ask != current_best_ask) {
         events.emplace_back(TopOfBook{current_best_bid, current_best_ask});
+    }
+}
+
+void MatchingEngine::track_events(const std::vector<Event>& events) {
+    for (const Event& event : events) {
+        std::visit(
+            [this](const auto& evt) {
+                using T = std::decay_t<decltype(evt)>;
+                if constexpr (std::is_same_v<T, OrderAccepted>) {
+                    const auto it = lifecycle_state_by_id_.find(evt.id);
+                    if (it == lifecycle_state_by_id_.end()) {
+                        lifecycle_state_by_id_.emplace(evt.id, OrderLifecycleState::Accepted);
+                    } else {
+                        assert(it->second == OrderLifecycleState::PartiallyFilled ||
+                               it->second == OrderLifecycleState::Canceled);
+                        it->second = OrderLifecycleState::Accepted;
+                    }
+                } else if constexpr (std::is_same_v<T, OrderPartiallyFilled>) {
+                    auto [it, inserted] =
+                        lifecycle_state_by_id_.try_emplace(evt.id, OrderLifecycleState::Accepted);
+                    (void)inserted;
+                    assert(it->second == OrderLifecycleState::Accepted ||
+                           it->second == OrderLifecycleState::PartiallyFilled);
+                    it->second = OrderLifecycleState::PartiallyFilled;
+                } else if constexpr (std::is_same_v<T, OrderFilled>) {
+                    auto [it, inserted] =
+                        lifecycle_state_by_id_.try_emplace(evt.id, OrderLifecycleState::Accepted);
+                    (void)inserted;
+                    assert(it->second == OrderLifecycleState::Accepted ||
+                           it->second == OrderLifecycleState::PartiallyFilled ||
+                           it->second == OrderLifecycleState::Canceled);
+                    it->second = OrderLifecycleState::Filled;
+                } else if constexpr (std::is_same_v<T, OrderCanceled>) {
+                    auto it = lifecycle_state_by_id_.find(evt.id);
+                    assert(it != lifecycle_state_by_id_.end());
+                    assert(it->second == OrderLifecycleState::Accepted ||
+                           it->second == OrderLifecycleState::PartiallyFilled);
+                    it->second = OrderLifecycleState::Canceled;
+                }
+            },
+            event);
     }
 }
 

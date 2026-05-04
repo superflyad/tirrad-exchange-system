@@ -6,6 +6,47 @@
 #include <tes/replay_log.hpp>
 #include <tes/types.hpp>
 
+namespace {
+
+bool events_equal(const tes::Event& left, const tes::Event& right) {
+    if (left.index() != right.index()) {
+        return false;
+    }
+    return std::visit(
+        [](const auto& lhs, const auto& rhs) {
+            using L = std::decay_t<decltype(lhs)>;
+            using R = std::decay_t<decltype(rhs)>;
+            if constexpr (!std::is_same_v<L, R>) {
+                return false;
+            } else if constexpr (std::is_same_v<L, tes::OrderAccepted>) {
+                return lhs.id == rhs.id && lhs.side == rhs.side && lhs.price.ticks == rhs.price.ticks &&
+                       lhs.qty.value == rhs.qty.value;
+            } else if constexpr (std::is_same_v<L, tes::OrderRejected>) {
+                return lhs.side == rhs.side && lhs.price.ticks == rhs.price.ticks && lhs.qty.value == rhs.qty.value &&
+                       lhs.reason == rhs.reason;
+            } else if constexpr (std::is_same_v<L, tes::OrderCanceled>) {
+                return lhs.id == rhs.id;
+            } else if constexpr (std::is_same_v<L, tes::CancelRejected>) {
+                return lhs.id == rhs.id && lhs.reason == rhs.reason;
+            } else if constexpr (std::is_same_v<L, tes::TradeExecuted>) {
+                return lhs.taker_id == rhs.taker_id && lhs.maker_id == rhs.maker_id && lhs.taker_side == rhs.taker_side &&
+                       lhs.price.ticks == rhs.price.ticks && lhs.qty.value == rhs.qty.value;
+            } else if constexpr (std::is_same_v<L, tes::OrderPartiallyFilled>) {
+                return lhs.id == rhs.id && lhs.last_fill_qty.value == rhs.last_fill_qty.value &&
+                       lhs.remaining_qty.value == rhs.remaining_qty.value;
+            } else if constexpr (std::is_same_v<L, tes::OrderFilled>) {
+                return lhs.id == rhs.id && lhs.last_fill_qty.value == rhs.last_fill_qty.value;
+            } else if constexpr (std::is_same_v<L, tes::OrderExpired>) {
+                return lhs.id == rhs.id;
+            } else {
+                return lhs.best_bid == rhs.best_bid && lhs.best_ask == rhs.best_ask;
+            }
+        },
+        left, right);
+}
+
+}
+
 TEST_CASE("replay log records commands in sequence") {
     tes::ReplayLog log;
 
@@ -66,4 +107,30 @@ TEST_CASE("replay log serializes entries with sequence command and events") {
 
     CHECK(serialized ==
           "[{\"sequence\":0,\"command\":{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\"Ask\",\"price\":104,\"qty\":7}},\"events\":[{\"type\":\"OrderAccepted\",\"data\":{}},{\"type\":\"TopOfBook\",\"data\":{}}]},{\"sequence\":1,\"command\":{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":7}},\"events\":[]}]" );
+}
+
+TEST_CASE("replay commands re-executes stream and reproduces recorded events") {
+    tes::MatchingEngine engine;
+    tes::ReplayLog log;
+
+    std::vector<tes::Event> first = engine.place_limit_order(tes::Side::Ask, tes::Price{101}, tes::Qty{4});
+    log.record(tes::LimitOrderCommand{tes::Side::Ask, tes::Price{101}, tes::Qty{4}}, first);
+
+    std::vector<tes::Event> second = engine.place_limit_order(tes::Side::Bid, tes::Price{101}, tes::Qty{2});
+    log.record(tes::LimitOrderCommand{tes::Side::Bid, tes::Price{101}, tes::Qty{2}}, second);
+
+    std::vector<tes::Event> third = engine.cancel(1);
+    log.record(tes::CancelOrderCommand{1}, third);
+
+    const std::vector<std::vector<tes::Event>> replayed = tes::replay_commands(log.entries());
+
+    REQUIRE(replayed.size() == log.entries().size());
+    for (std::size_t index = 0; index < replayed.size(); ++index) {
+        const std::vector<tes::Event>& original = log.entries()[index].events;
+        const std::vector<tes::Event>& replay = replayed[index];
+        REQUIRE(replay.size() == original.size());
+        for (std::size_t event_index = 0; event_index < replay.size(); ++event_index) {
+            CHECK(events_equal(replay[event_index], original[event_index]));
+        }
+    }
 }

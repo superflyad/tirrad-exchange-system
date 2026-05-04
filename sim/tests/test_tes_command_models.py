@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, parse_command, parse_commands
+from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, ReplaceOrderCommand, parse_command, parse_commands
 
 
 def test_parse_limit_order_command() -> None:
@@ -15,12 +15,19 @@ def test_parse_cancel_order_command() -> None:
     assert command == CancelOrderCommand(order_id=1)
 
 
+
+
+def test_parse_replace_order_command() -> None:
+    command = parse_command({"type": "ReplaceOrder", "data": {"order_id": 1, "price": 101, "qty": 5}})
+    assert command == ReplaceOrderCommand(order_id=1, price=101, qty=5)
+
 def test_parse_commands_multiple() -> None:
     commands = parse_commands([
         {"type": "LimitOrder", "data": {"side": "SELL", "price": 101, "qty": 3, "time_in_force": "GTC"}},
         {"type": "CancelOrder", "data": {"order_id": 1}},
+        {"type": "ReplaceOrder", "data": {"order_id": 2, "price": 102, "qty": 4}},
     ])
-    assert len(commands) == 2
+    assert len(commands) == 3
 
 
 @pytest.mark.parametrize(
@@ -43,6 +50,9 @@ def test_parse_commands_multiple() -> None:
         {"type": "LimitOrder", "data": {"side": "BUY", "price": 1, "qty": -1}},
         {"type": "CancelOrder", "data": {"order_id": 0}},
         {"type": "CancelOrder", "data": {"order_id": -1}},
+        {"type": "ReplaceOrder", "data": {"order_id": 1, "price": 1}},
+        {"type": "ReplaceOrder", "data": {"order_id": 1, "price": 0, "qty": 1}},
+        {"type": "ReplaceOrder", "data": {"order_id": 1, "price": 1, "qty": 0}},
     ],
 )
 def test_parse_command_rejections(raw: object) -> None:

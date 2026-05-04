@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from sim.tes_engine_adapter import execute_command, execute_commands
-from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, MarketOrderCommand
+from sim.tes_models.commands import CancelOrderCommand, LimitOrderCommand, MarketOrderCommand, ReplaceOrderCommand
 
 
 def test_execute_limit_order_command_returns_models() -> None:
@@ -272,3 +272,26 @@ def test_partial_market_fill_emits_trade_and_lifecycle_events() -> None:
     assert second_trade.data.price == 101
     assert second_trade.data.qty == 2
 
+
+
+def test_replace_order_command_produces_lifecycle_events() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    accepted_events = execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=10))
+    accepted = next(event for event in accepted_events if event.type == "OrderAccepted")
+
+    replace_events = execute_command(engine, ReplaceOrderCommand(order_id=accepted.data.order_id, price=101, qty=5))
+
+    assert any(event.type == "OrderCanceled" for event in replace_events)
+    assert any(event.type == "OrderAccepted" for event in replace_events)
+
+
+def test_replace_unknown_order_produces_cancel_rejected() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = execute_command(engine, ReplaceOrderCommand(order_id=999, price=101, qty=5))
+
+    rejected = next(event for event in events if event.type == "CancelRejected")
+    assert rejected.data.reason == "UnknownOrderId"

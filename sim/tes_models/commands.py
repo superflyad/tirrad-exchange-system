@@ -23,7 +23,14 @@ class CancelOrderCommand:
     order_id: int
 
 
-TesCommand: TypeAlias = LimitOrderCommand | MarketOrderCommand | CancelOrderCommand
+@dataclass(frozen=True)
+class ReplaceOrderCommand:
+    order_id: int
+    price: int
+    qty: int
+
+
+TesCommand: TypeAlias = LimitOrderCommand | MarketOrderCommand | CancelOrderCommand | ReplaceOrderCommand
 
 
 def _require_dict(value: Any, name: str) -> dict[str, Any]:
@@ -92,6 +99,14 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
     if command_type == "CancelOrder":
         _require_exact_keys(data, {"order_id"}, "CancelOrder.data")
         return CancelOrderCommand(order_id=_require_positive_int(data["order_id"], "order_id"))
+
+    if command_type == "ReplaceOrder":
+        _require_exact_keys(data, {"order_id", "price", "qty"}, "ReplaceOrder.data")
+        return ReplaceOrderCommand(
+            order_id=_require_positive_int(data["order_id"], "order_id"),
+            price=_require_positive_int(data["price"], "price"),
+            qty=_require_positive_int(data["qty"], "qty"),
+        )
 
     raise ValueError(f"unknown command type: {command_type}")
 

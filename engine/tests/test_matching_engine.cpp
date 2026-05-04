@@ -781,6 +781,17 @@ TEST_CASE("replace can execute immediately when crossing") {
     const std::vector<tes::Event> events = engine.replace_order(bid_id, tes::Price{100}, tes::Qty{5});
     const std::vector<tes::TradeExecuted> trades = collect_trades(events);
 
+    CHECK(std::holds_alternative<tes::OrderCanceled>(events.front()));
+
+    bool saw_trade = false;
+    bool saw_fill = false;
+    for (const tes::Event& event : events) {
+        saw_trade = saw_trade || std::holds_alternative<tes::TradeExecuted>(event);
+        saw_fill = saw_fill || std::holds_alternative<tes::OrderFilled>(event);
+    }
+    CHECK(saw_trade);
+    CHECK(saw_fill);
+
     REQUIRE(trades.size() == 1);
     CHECK(trades[0].taker_id == bid_id);
     CHECK(trades[0].price.ticks == 100);

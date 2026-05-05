@@ -202,6 +202,34 @@ namespace {
     return out;
 }
 
+
+[[nodiscard]] py::dict account_snapshot_to_py(const tes::MatchingEngine::AccountSnapshot& snapshot) {
+    py::dict positions;
+    for (const auto& [symbol, qty] : snapshot.position_qty_by_symbol) positions[symbol.c_str()] = qty;
+    py::dict reserved_positions;
+    for (const auto& [symbol, qty] : snapshot.reserved_qty_by_symbol) reserved_positions[symbol.c_str()] = qty;
+    py::dict out;
+    out["cash_balance"] = snapshot.cash_balance;
+    out["reserved_cash"] = snapshot.reserved_cash;
+    out["positions"] = positions;
+    out["reserved_positions"] = reserved_positions;
+    return out;
+}
+
+[[nodiscard]] py::dict ledger_entry_to_py(const tes::MatchingEngine::AccountLedgerEntry& entry) {
+    py::dict out;
+    out["sequence"] = entry.sequence;
+    out["account_id"] = entry.account_id;
+    out["symbol"] = entry.symbol;
+    out["reason"] = entry.reason;
+    out["cash_delta"] = entry.cash_delta;
+    out["position_delta"] = entry.position_delta;
+    out["reserved_cash_delta"] = entry.reserved_cash_delta;
+    out["reserved_position_delta"] = entry.reserved_position_delta;
+    out["related_order_id"] = entry.related_order_id.has_value() ? py::cast(*entry.related_order_id) : py::none();
+    out["related_trade_id"] = entry.related_trade_id.has_value() ? py::cast(*entry.related_trade_id) : py::none();
+    return out;
+}
 [[nodiscard]] std::vector<py::dict> events_to_dicts(const std::vector<tes::Event>& events) {
     std::vector<py::dict> out;
     out.reserve(events.size());
@@ -333,7 +361,21 @@ PYBIND11_MODULE(tes_engine, m) {
                  return snapshot_to_py(self.snapshot(symbol, levels));
              },
              py::arg("levels"), py::arg("symbol") = tes::kDefaultSymbol)
-        .def("sequence_number",
+        
+        .def("account_ledger",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id, const std::optional<std::string>& symbol) {
+                 py::list out;
+                 const auto entries = symbol.has_value() ? self.account_ledger(account_id, *symbol) : self.account_ledger(account_id);
+                 for (const auto& entry : entries) out.append(ledger_entry_to_py(entry));
+                 return out;
+             },
+             py::arg("account_id"), py::arg("symbol") = std::nullopt)
+        .def("latest_account_snapshot",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id) {
+                 return account_snapshot_to_py(self.latest_account_snapshot(account_id));
+             },
+             py::arg("account_id"))
+.def("sequence_number",
              [](const tes::MatchingEngine& self, const std::string& symbol) { return self.sequence_number(symbol); },
              py::arg("symbol") = tes::kDefaultSymbol);
 }

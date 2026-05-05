@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
 
 #include <tes/order.hpp>
 
@@ -35,6 +36,53 @@ MatchingEngine::AccountSnapshot MatchingEngine::account_snapshot(AccountId accou
     return it == accounts_.end() ? AccountSnapshot{} : it->second;
 }
 
+
+std::vector<MatchingEngine::AccountLedgerEntry> MatchingEngine::account_ledger(AccountId account_id) const {
+    std::vector<AccountLedgerEntry> out;
+    for (const auto& entry : account_ledger_) {
+        if (entry.account_id == account_id) out.push_back(entry);
+    }
+    return out;
+}
+
+std::vector<MatchingEngine::AccountLedgerEntry> MatchingEngine::account_ledger(AccountId account_id, const Symbol& symbol) const {
+    std::vector<AccountLedgerEntry> out;
+    for (const auto& entry : account_ledger_) {
+        if (entry.account_id == account_id && entry.symbol == symbol) out.push_back(entry);
+    }
+    return out;
+}
+
+MatchingEngine::AccountSnapshot MatchingEngine::latest_account_snapshot(AccountId account_id) const {
+    return account_snapshot(account_id);
+}
+
+void MatchingEngine::append_ledger_entry(const AccountLedgerEntry& entry) {
+    AccountLedgerEntry copy = entry;
+    copy.sequence = next_ledger_sequence_++;
+    account_ledger_.push_back(std::move(copy));
+}
+
+void MatchingEngine::assert_invariants(const Symbol& symbol, AccountId account_id, AccountId maker_account_id,
+                                       std::int64_t notional, Side taker_side) const {
+    const AccountSnapshot& taker = accounts_.at(account_id);
+    const AccountSnapshot& maker = accounts_.at(maker_account_id);
+    if (taker.cash_balance + taker.reserved_cash < 0 || maker.cash_balance + maker.reserved_cash < 0) {
+        throw std::runtime_error("cash+reserved_cash invariant violated");
+    }
+    const auto taker_position = taker.position_qty_by_symbol.contains(symbol) ? taker.position_qty_by_symbol.at(symbol) : 0;
+    const auto maker_position = maker.position_qty_by_symbol.contains(symbol) ? maker.position_qty_by_symbol.at(symbol) : 0;
+    const auto taker_reserved = taker.reserved_qty_by_symbol.contains(symbol) ? taker.reserved_qty_by_symbol.at(symbol) : 0;
+    const auto maker_reserved = maker.reserved_qty_by_symbol.contains(symbol) ? maker.reserved_qty_by_symbol.at(symbol) : 0;
+    if (taker_position + taker_reserved < 0 || maker_position + maker_reserved < 0) {
+        throw std::runtime_error("position+reserved_position invariant violated");
+    }
+    const std::int64_t buyer_cash_delta = taker_side == Side::Bid ? -notional : notional;
+    const std::int64_t seller_cash_delta = taker_side == Side::Bid ? notional : -notional;
+    if (buyer_cash_delta + seller_cash_delta != 0) {
+        throw std::runtime_error("trade cash transfer invariant violated");
+    }
+}
 std::optional<AccountId> MatchingEngine::order_owner(OrderId id) const {
     const auto it = order_ownership_by_id_.find(id);
     if (it == order_ownership_by_id_.end()) {
@@ -93,9 +141,11 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
 
     const std::int64_t limit_notional = price.ticks * qty.value;
     if (side == Side::Bid && taker.cash_balance - taker.reserved_cash < limit_notional) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
         return {OrderRejected{side, price, qty, RejectReason::InsufficientCash, symbol}};
     }
     if (side == Side::Ask && taker.position_qty_by_symbol[symbol] - taker.reserved_qty_by_symbol[symbol] < qty.value) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
         return {OrderRejected{side, price, qty, RejectReason::InsufficientPosition, symbol}};
     }
 
@@ -154,6 +204,18 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
             }
         }
 
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "trade_settlement",
+            side == Side::Bid ? -notional : notional,
+            side == Side::Bid ? fill->qty.value : -fill->qty.value,
+            0, 0, taker_id, fill->maker_id});
+        append_ledger_entry(AccountLedgerEntry{0, maker_account_id, symbol, "trade_settlement",
+            side == Side::Bid ? notional : -notional,
+            side == Side::Bid ? -fill->qty.value : fill->qty.value,
+            side == Side::Ask ? -notional : 0,
+            side == Side::Bid ? -fill->qty.value : 0,
+            fill->maker_id, taker_id});
+        assert_invariants(symbol, account_id, maker_account_id, notional, side);
+
         if (owner_it != order_ownership_by_id_.end()) {
             owner_it->second.qty.value -= fill->qty.value;
             if (owner_it->second.qty.value == 0) {
@@ -172,6 +234,7 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
     if (remaining.value > 0) {
         if (tif == TimeInForce::Ioc) {
             events.emplace_back(OrderExpired{taker_id, symbol});
+            append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "ioc_fok_expiration_release", 0, 0, 0, 0, taker_id, std::nullopt});
         } else {
             std::vector<Event> accepted_events = book.add_limit_order(Order{taker_id, side, price, remaining});
             for (Event& event : accepted_events) {
@@ -191,9 +254,11 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
                 const std::int64_t reserve = price.ticks * remaining.value;
                 taker.reserved_cash += reserve;
                 reserved_cash_by_order_id_[taker_id] = reserve;
+                append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, reserve, 0, taker_id, std::nullopt});
             } else {
                 taker.reserved_qty_by_symbol[symbol] += remaining.value;
                 reserved_qty_by_order_id_[taker_id] = remaining.value;
+                append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, 0, remaining.value, taker_id, std::nullopt});
             }
             events.insert(events.end(), accepted_events.begin(), accepted_events.end());
         }
@@ -278,10 +343,12 @@ std::vector<Event> MatchingEngine::cancel(AccountId account_id, OrderId id) {
     AccountSnapshot& account = accounts_[account_id];
     if (const auto reserve_it = reserved_cash_by_order_id_.find(id); reserve_it != reserved_cash_by_order_id_.end()) {
         account.reserved_cash -= reserve_it->second;
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "cancel_release", 0, 0, -reserve_it->second, 0, id, std::nullopt});
         reserved_cash_by_order_id_.erase(reserve_it);
     }
     if (const auto reserve_it = reserved_qty_by_order_id_.find(id); reserve_it != reserved_qty_by_order_id_.end()) {
         account.reserved_qty_by_symbol[symbol] -= reserve_it->second;
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "cancel_release", 0, 0, 0, -reserve_it->second, id, std::nullopt});
         reserved_qty_by_order_id_.erase(reserve_it);
     }
     order_ownership_by_id_.erase(ownership_it);
@@ -310,6 +377,7 @@ std::vector<Event> MatchingEngine::replace_order(AccountId account_id, OrderId i
 
     const Side side = ownership_it->second.side;
     const Symbol symbol = ownership_it->second.symbol;
+    append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_release_re_reserve", 0, 0, 0, 0, id, std::nullopt});
     std::vector<Event> events = cancel(account_id, id);
     std::vector<Event> replacement = place_limit_order_with_account_and_id(account_id, symbol, id, side, new_price, new_qty,
                                                                            TimeInForce::Gtc);

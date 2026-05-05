@@ -51,6 +51,19 @@ def _build_parser() -> argparse.ArgumentParser:
     backtest_parser.add_argument("--output-json", default=None)
     backtest_parser.set_defaults(handler=_handle_backtest)
 
+
+    session_parser = sim_subparsers.add_parser("session", help="Run a time-stepped market session")
+    session_parser.add_argument("--scenario", default="calm_market")
+    session_parser.add_argument("--steps", type=int, required=True)
+    session_parser.add_argument("--symbols", default="DEFAULT")
+    session_parser.add_argument("--seed", type=int, default=42)
+    session_parser.add_argument("--initial-price", type=int, default=100)
+    session_parser.add_argument("--volatility", type=float, default=0.02)
+    session_parser.add_argument("--participants", type=int, default=20)
+    session_parser.add_argument("--output-json", type=Path, default=None)
+    session_parser.add_argument("--depth-levels", type=int, default=5)
+    session_parser.set_defaults(handler=_handle_session)
+
     list_strategies_parser = sim_subparsers.add_parser(
         "list-strategies",
         help="List available strategies",
@@ -100,6 +113,11 @@ def _handle_backtest(args: argparse.Namespace) -> int:
     from sim.tes_cli.commands.backtest import handle_backtest
 
     return int(handle_backtest(args))
+
+def _handle_session(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.session import handle_session
+
+    return int(handle_session(args))
 
 def _handle_list_strategies(args: argparse.Namespace) -> int:
     from sim.tes_cli.commands.list_strategies import handle_list_strategies

@@ -22,6 +22,12 @@ TEST_CASE("tes::to_string(Side) returns canonical names") {
     CHECK(tes::to_string(tes::Side::Ask) == "Ask");
 }
 
+TEST_CASE("tes::Symbol and kDefaultSymbol are available") {
+    const tes::Symbol symbol = tes::kDefaultSymbol;
+    CHECK(symbol == "DEFAULT");
+    CHECK(tes::Symbol{"AAPL"} == "AAPL");
+}
+
 TEST_CASE("tes::to_string(Event) formats all event variants") {
     const tes::Event accepted = tes::OrderAccepted{7, tes::Side::Bid, tes::Price{101}, tes::Qty{3}};
     const std::string accepted_text = tes::to_string(accepted);

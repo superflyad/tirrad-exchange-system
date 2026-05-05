@@ -155,3 +155,58 @@ TEST_CASE("depth aggregate updates after cancel") {
     CHECK(d.bids[0].price.ticks == 99);
     CHECK(d.bids[0].qty.value == 3);
 }
+
+TEST_CASE("cancel first middle and last preserve fifo and invariants") {
+    tes::OrderBook book;
+    (void)book.add_limit_order(tes::Order{11, tes::Side::Bid, tes::Price{100}, tes::Qty{2}});
+    (void)book.add_limit_order(tes::Order{12, tes::Side::Bid, tes::Price{100}, tes::Qty{3}});
+    (void)book.add_limit_order(tes::Order{13, tes::Side::Bid, tes::Price{100}, tes::Qty{4}});
+
+    (void)book.cancel(11);
+    REQUIRE(book.front_of_level(tes::Side::Bid, tes::Price{100}).has_value());
+    CHECK(book.front_of_level(tes::Side::Bid, tes::Price{100})->id == 12);
+    CHECK(book.validate_invariants());
+
+    (void)book.cancel(12);
+    REQUIRE(book.front_of_level(tes::Side::Bid, tes::Price{100}).has_value());
+    CHECK(book.front_of_level(tes::Side::Bid, tes::Price{100})->id == 13);
+    CHECK(book.validate_invariants());
+
+    (void)book.cancel(13);
+    CHECK(book.level_size(tes::Side::Bid, tes::Price{100}) == 0);
+    CHECK(book.validate_invariants());
+}
+
+TEST_CASE("find_order transitions through add cancel and fill") {
+    tes::OrderBook book;
+    (void)book.add_limit_order(tes::Order{21, tes::Side::Ask, tes::Price{101}, tes::Qty{5}});
+    const auto found = book.find_order(21);
+    REQUIRE(found.has_value());
+    CHECK(found->qty.value == 5);
+
+    (void)book.cancel(21);
+    CHECK_FALSE(book.find_order(21).has_value());
+
+    (void)book.add_limit_order(tes::Order{22, tes::Side::Ask, tes::Price{101}, tes::Qty{5}});
+    (void)book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(book.find_order(22).has_value());
+    CHECK(book.find_order(22)->qty.value == 3);
+    (void)book.fill_best(tes::Side::Ask, tes::Qty{3});
+    CHECK_FALSE(book.find_order(22).has_value());
+    CHECK(book.validate_invariants());
+}
+
+TEST_CASE("aggregate qty stays correct after add cancel and partial fill") {
+    tes::OrderBook book;
+    (void)book.add_limit_order(tes::Order{31, tes::Side::Ask, tes::Price{105}, tes::Qty{6}});
+    (void)book.add_limit_order(tes::Order{32, tes::Side::Ask, tes::Price{105}, tes::Qty{2}});
+    (void)book.fill_best(tes::Side::Ask, tes::Qty{4});
+    auto d = book.depth(1);
+    REQUIRE(d.asks.size() == 1);
+    CHECK(d.asks[0].qty.value == 4);
+    (void)book.cancel(32);
+    d = book.depth(1);
+    REQUIRE(d.asks.size() == 1);
+    CHECK(d.asks[0].qty.value == 2);
+    CHECK(book.validate_invariants());
+}

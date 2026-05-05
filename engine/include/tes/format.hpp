@@ -38,6 +38,20 @@ namespace tes {
             return "UnknownOrderId";
         case RejectReason::NoLiquidity:
             return "NoLiquidity";
+        case RejectReason::InsufficientCash:
+            return "InsufficientCash";
+        case RejectReason::InsufficientPosition:
+            return "InsufficientPosition";
+        case RejectReason::WrongAccount:
+            return "WrongAccount";
+        case RejectReason::InsufficientBuyingPower:
+            return "InsufficientBuyingPower";
+        case RejectReason::ShortSellingDisabled:
+            return "ShortSellingDisabled";
+        case RejectReason::MarginRequirementFailed:
+            return "MarginRequirementFailed";
+        case RejectReason::MaintenanceMarginBreached:
+            return "MaintenanceMarginBreached";
     }
 
     return "Unknown";

@@ -33,7 +33,11 @@ namespace {
     if (reason == tes::RejectReason::NoLiquidity) return "NoLiquidity";
     if (reason == tes::RejectReason::InsufficientCash) return "InsufficientCash";
     if (reason == tes::RejectReason::InsufficientPosition) return "InsufficientPosition";
-    return "WrongAccount";
+    if (reason == tes::RejectReason::WrongAccount) return "WrongAccount";
+    if (reason == tes::RejectReason::InsufficientBuyingPower) return "InsufficientBuyingPower";
+    if (reason == tes::RejectReason::ShortSellingDisabled) return "ShortSellingDisabled";
+    if (reason == tes::RejectReason::MarginRequirementFailed) return "MarginRequirementFailed";
+    return "MaintenanceMarginBreached";
 }
 
 [[nodiscard]] tes::Side side_from_string(const std::string& side) {
@@ -215,6 +219,7 @@ namespace {
     py::dict out;
     out["cash_balance"] = snapshot.cash_balance;
     out["reserved_cash"] = snapshot.reserved_cash;
+    out["reserved_short_margin"] = snapshot.reserved_short_margin;
     out["positions"] = positions;
     out["reserved_positions"] = reserved_positions;
     out["average_cost"] = average_cost;
@@ -243,6 +248,47 @@ namespace {
     out["unrealized_pnl"] = snapshot.unrealized_pnl;
     out["unrealized_pnl_by_symbol"] = unrealized_by_symbol;
     out["total_equity"] = snapshot.total_equity;
+    return out;
+}
+
+
+[[nodiscard]] py::dict risk_config_to_py(const tes::MatchingEngine::AccountRiskConfig& config) {
+    py::dict out;
+    out["mode"] = config.mode == tes::MatchingEngine::AccountRiskMode::CashOnly ? "CashOnly" : "Margin";
+    out["allow_short_selling"] = config.allow_short_selling;
+    out["max_leverage"] = config.max_leverage;
+    out["initial_margin_requirement"] = config.initial_margin_requirement;
+    out["maintenance_margin_requirement"] = config.maintenance_margin_requirement;
+    out["short_margin_requirement"] = config.short_margin_requirement;
+    return out;
+}
+
+[[nodiscard]] tes::MatchingEngine::AccountRiskConfig risk_config_from_py(const py::dict& raw) {
+    tes::MatchingEngine::AccountRiskConfig config;
+    if (raw.contains("mode")) {
+        const std::string mode = raw["mode"].cast<std::string>();
+        if (mode == "CashOnly" || mode == "cash_only") config.mode = tes::MatchingEngine::AccountRiskMode::CashOnly;
+        else if (mode == "Margin" || mode == "margin") config.mode = tes::MatchingEngine::AccountRiskMode::Margin;
+        else throw std::invalid_argument("risk config mode must be CashOnly or Margin");
+    }
+    if (raw.contains("allow_short_selling")) config.allow_short_selling = raw["allow_short_selling"].cast<bool>();
+    if (raw.contains("max_leverage")) config.max_leverage = raw["max_leverage"].cast<double>();
+    if (raw.contains("initial_margin_requirement")) config.initial_margin_requirement = raw["initial_margin_requirement"].cast<double>();
+    if (raw.contains("maintenance_margin_requirement")) config.maintenance_margin_requirement = raw["maintenance_margin_requirement"].cast<double>();
+    if (raw.contains("short_margin_requirement")) config.short_margin_requirement = raw["short_margin_requirement"].cast<double>();
+    return config;
+}
+
+[[nodiscard]] py::dict margin_snapshot_to_py(const tes::MatchingEngine::MarginSnapshot& snapshot) {
+    py::dict out;
+    out["gross_exposure"] = snapshot.gross_exposure;
+    out["net_liquidation_value"] = snapshot.net_liquidation_value;
+    out["equity"] = snapshot.equity;
+    out["margin_used"] = snapshot.margin_used;
+    out["available_buying_power"] = snapshot.available_buying_power;
+    out["short_exposure"] = snapshot.short_exposure;
+    out["maintenance_requirement"] = snapshot.maintenance_requirement;
+    out["margin_call"] = snapshot.margin_call;
     return out;
 }
 
@@ -365,6 +411,20 @@ PYBIND11_MODULE(tes_engine, m) {
                  out["fixed_fee"] = model.fixed_fee.has_value() ? py::cast(*model.fixed_fee) : py::none();
                  return out;
              })
+        .def("set_account_risk_config",
+             [](tes::MatchingEngine& self, std::uint64_t account_id, const py::dict& config) {
+                 self.set_account_risk_config(account_id, risk_config_from_py(config));
+             },
+             py::arg("account_id"), py::arg("config"))
+        .def("account_risk_config",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id) { return risk_config_to_py(self.account_risk_config(account_id)); },
+             py::arg("account_id"))
+        .def("account_buying_power",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id) { return self.account_buying_power(account_id); },
+             py::arg("account_id"))
+        .def("account_margin_snapshot",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id) { return margin_snapshot_to_py(self.account_margin_snapshot(account_id)); },
+             py::arg("account_id"))
         .def("set_account_state",
              [](tes::MatchingEngine& self, std::uint64_t account_id, const std::string& symbol, std::int64_t cash_balance, std::int64_t position_qty) {
                  self.set_account_state(account_id, symbol, cash_balance, position_qty);

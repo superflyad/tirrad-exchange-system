@@ -28,6 +28,28 @@ struct BookSnapshot {
 
 class MatchingEngine {
   public:
+    enum class AccountRiskMode { CashOnly, Margin };
+    struct AccountRiskConfig {
+        AccountRiskMode mode = AccountRiskMode::CashOnly;
+        bool allow_short_selling = false;
+        double max_leverage = 1.0;
+        double initial_margin_requirement = 1.0;
+        double maintenance_margin_requirement = 1.0;
+        double short_margin_requirement = 1.0;
+        std::unordered_map<Symbol, double> initial_margin_requirement_by_symbol;
+        std::unordered_map<Symbol, double> maintenance_margin_requirement_by_symbol;
+        std::unordered_map<Symbol, double> short_margin_requirement_by_symbol;
+    };
+    struct MarginSnapshot {
+        double gross_exposure = 0.0;
+        double net_liquidation_value = 0.0;
+        double equity = 0.0;
+        double margin_used = 0.0;
+        double available_buying_power = 0.0;
+        double short_exposure = 0.0;
+        double maintenance_requirement = 0.0;
+        bool margin_call = false;
+    };
     struct FeeModel {
         double maker_fee_rate = 0.0;
         double taker_fee_rate = 0.0;
@@ -51,6 +73,7 @@ class MatchingEngine {
         std::unordered_map<Symbol, std::int64_t> position_qty_by_symbol;
         std::int64_t reserved_cash = 0;
         std::unordered_map<Symbol, std::int64_t> reserved_qty_by_symbol;
+        std::int64_t reserved_short_margin = 0;
         std::unordered_map<Symbol, double> average_cost_by_symbol;
         std::unordered_map<Symbol, double> realized_pnl_by_symbol;
         double realized_pnl = 0.0;
@@ -68,6 +91,10 @@ class MatchingEngine {
     };
 
     void set_fee_model(FeeModel fee_model);
+    void set_account_risk_config(AccountId account_id, AccountRiskConfig config);
+    [[nodiscard]] AccountRiskConfig account_risk_config(AccountId account_id) const;
+    [[nodiscard]] double account_buying_power(AccountId account_id) const;
+    [[nodiscard]] MarginSnapshot account_margin_snapshot(AccountId account_id) const;
     [[nodiscard]] FeeModel fee_model() const;
     void set_account_state(AccountId account_id, std::int64_t cash_balance, std::int64_t position_qty);
     void set_account_state(AccountId account_id, const Symbol& symbol, std::int64_t cash_balance, std::int64_t position_qty);
@@ -110,6 +137,13 @@ class MatchingEngine {
     [[nodiscard]] std::int64_t fee_for_notional(std::int64_t notional, bool maker) const;
     void apply_position_accounting(AccountSnapshot& account, const Symbol& symbol, Side side, Price price, Qty qty, std::int64_t fee);
     [[nodiscard]] std::optional<double> mark_price(const Symbol& symbol) const;
+    [[nodiscard]] AccountRiskConfig effective_risk_config(AccountId account_id) const;
+    [[nodiscard]] double initial_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const;
+    [[nodiscard]] double maintenance_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const;
+    [[nodiscard]] double short_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const;
+    [[nodiscard]] std::int64_t buy_reserve(AccountId account_id, const Symbol& symbol, Price price, Qty qty, std::int64_t fee) const;
+    [[nodiscard]] std::int64_t short_margin_reserve(AccountId account_id, const Symbol& symbol, Price price, std::int64_t short_qty) const;
+    [[nodiscard]] std::optional<RejectReason> validate_order_risk(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty, std::optional<OrderId> replacing_order_id = std::nullopt) const;
 
     std::unordered_map<Symbol, OrderBook> books_;
     OrderId next_order_id_ = 1;
@@ -117,6 +151,8 @@ class MatchingEngine {
     std::unordered_map<OrderId, OrderOwnership> order_ownership_by_id_;
     std::unordered_map<OrderId, std::int64_t> reserved_cash_by_order_id_;
     std::unordered_map<OrderId, std::int64_t> reserved_qty_by_order_id_;
+    std::unordered_map<OrderId, std::int64_t> reserved_short_margin_by_order_id_;
+    std::unordered_map<AccountId, AccountRiskConfig> risk_configs_;
     std::unordered_map<Symbol, std::uint64_t> sequence_numbers_by_symbol_;
     std::vector<AccountLedgerEntry> account_ledger_;
     std::uint64_t next_ledger_sequence_ = 1;

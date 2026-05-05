@@ -15,6 +15,10 @@ enum class RejectReason {
     InsufficientCash,
     InsufficientPosition,
     WrongAccount,
+    InsufficientBuyingPower,
+    ShortSellingDisabled,
+    MarginRequirementFailed,
+    MaintenanceMarginBreached,
 };
 
 struct OrderAccepted {

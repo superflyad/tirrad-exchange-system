@@ -34,6 +34,127 @@ void MatchingEngine::set_fee_model(FeeModel fee_model) {
 
 MatchingEngine::FeeModel MatchingEngine::fee_model() const { return fee_model_; }
 
+void MatchingEngine::set_account_risk_config(AccountId account_id, AccountRiskConfig config) {
+    if (config.max_leverage < 1.0) throw std::invalid_argument("max_leverage must be at least 1.0");
+    if (config.initial_margin_requirement <= 0.0 || config.maintenance_margin_requirement <= 0.0 ||
+        config.short_margin_requirement <= 0.0) {
+        throw std::invalid_argument("margin requirements must be positive");
+    }
+    risk_configs_[account_id] = std::move(config);
+}
+
+MatchingEngine::AccountRiskConfig MatchingEngine::account_risk_config(AccountId account_id) const {
+    return effective_risk_config(account_id);
+}
+
+MatchingEngine::AccountRiskConfig MatchingEngine::effective_risk_config(AccountId account_id) const {
+    const auto it = risk_configs_.find(account_id);
+    return it == risk_configs_.end() ? AccountRiskConfig{} : it->second;
+}
+
+double MatchingEngine::initial_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const {
+    const auto it = config.initial_margin_requirement_by_symbol.find(symbol);
+    return it == config.initial_margin_requirement_by_symbol.end() ? config.initial_margin_requirement : it->second;
+}
+
+double MatchingEngine::maintenance_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const {
+    const auto it = config.maintenance_margin_requirement_by_symbol.find(symbol);
+    return it == config.maintenance_margin_requirement_by_symbol.end() ? config.maintenance_margin_requirement : it->second;
+}
+
+double MatchingEngine::short_margin_requirement(const AccountRiskConfig& config, const Symbol& symbol) const {
+    const auto it = config.short_margin_requirement_by_symbol.find(symbol);
+    return it == config.short_margin_requirement_by_symbol.end() ? config.short_margin_requirement : it->second;
+}
+
+std::int64_t MatchingEngine::buy_reserve(AccountId account_id, const Symbol& symbol, Price price, Qty qty, std::int64_t fee) const {
+    const std::int64_t notional = price.ticks * qty.value + fee;
+    const AccountRiskConfig config = effective_risk_config(account_id);
+    if (config.mode == AccountRiskMode::CashOnly) return notional;
+    return static_cast<std::int64_t>(std::ceil(static_cast<double>(notional) * initial_margin_requirement(config, symbol)));
+}
+
+std::int64_t MatchingEngine::short_margin_reserve(AccountId account_id, const Symbol& symbol, Price price, std::int64_t short_qty) const {
+    if (short_qty <= 0) return 0;
+    const AccountRiskConfig config = effective_risk_config(account_id);
+    return static_cast<std::int64_t>(std::ceil(static_cast<double>(price.ticks * short_qty) * short_margin_requirement(config, symbol)));
+}
+
+MatchingEngine::MarginSnapshot MatchingEngine::account_margin_snapshot(AccountId account_id) const {
+    MarginSnapshot out;
+    const auto it = accounts_.find(account_id);
+    if (it == accounts_.end()) return out;
+    const AccountSnapshot& account = it->second;
+    const AccountRiskConfig config = effective_risk_config(account_id);
+    out.equity = static_cast<double>(account.cash_balance);
+    for (const auto& [symbol, qty] : account.position_qty_by_symbol) {
+        const double mark = mark_price(symbol).value_or(account.average_cost_by_symbol.contains(symbol) ? account.average_cost_by_symbol.at(symbol) : 0.0);
+        const double exposure = std::abs(static_cast<double>(qty)) * mark;
+        out.gross_exposure += exposure;
+        if (qty < 0) out.short_exposure += exposure;
+        out.equity += static_cast<double>(qty) * mark;
+        out.margin_used += exposure * (qty < 0 ? short_margin_requirement(config, symbol) : initial_margin_requirement(config, symbol));
+        out.maintenance_requirement += exposure * maintenance_margin_requirement(config, symbol);
+    }
+    out.margin_used += static_cast<double>(account.reserved_cash + account.reserved_short_margin);
+    out.net_liquidation_value = out.equity;
+    if (config.mode == AccountRiskMode::CashOnly) {
+        out.available_buying_power = std::max(0.0, static_cast<double>(account.cash_balance - account.reserved_cash));
+    } else {
+        const double leverage_cap = std::max(0.0, out.equity * config.max_leverage - out.gross_exposure - static_cast<double>(account.reserved_cash + account.reserved_short_margin));
+        const double margin_cap = std::max(0.0, out.equity - out.margin_used);
+        const double initial = std::max(0.000001, config.initial_margin_requirement);
+        out.available_buying_power = std::min(leverage_cap, margin_cap / initial);
+    }
+    out.margin_call = out.equity < out.maintenance_requirement;
+    return out;
+}
+
+double MatchingEngine::account_buying_power(AccountId account_id) const {
+    return account_margin_snapshot(account_id).available_buying_power;
+}
+
+std::optional<RejectReason> MatchingEngine::validate_order_risk(AccountId account_id, const Symbol& symbol, Side side,
+                                                                Price price, Qty qty, std::optional<OrderId> replacing_order_id) const {
+    const AccountSnapshot empty;
+    const auto account_it = accounts_.find(account_id);
+    const AccountSnapshot& account = account_it == accounts_.end() ? empty : account_it->second;
+    const AccountRiskConfig config = effective_risk_config(account_id);
+    const std::int64_t limit_notional = price.ticks * qty.value;
+    const std::int64_t limit_fee = std::max(fee_for_notional(limit_notional, false), fee_for_notional(limit_notional, true));
+    std::int64_t reserved_cash = account.reserved_cash;
+    std::int64_t reserved_short = account.reserved_short_margin;
+    std::int64_t reserved_qty = account.reserved_qty_by_symbol.contains(symbol) ? account.reserved_qty_by_symbol.at(symbol) : 0;
+    if (replacing_order_id.has_value()) {
+        if (const auto it = reserved_cash_by_order_id_.find(*replacing_order_id); it != reserved_cash_by_order_id_.end()) reserved_cash -= it->second;
+        if (const auto it = reserved_short_margin_by_order_id_.find(*replacing_order_id); it != reserved_short_margin_by_order_id_.end()) reserved_short -= it->second;
+        if (const auto it = reserved_qty_by_order_id_.find(*replacing_order_id); it != reserved_qty_by_order_id_.end()) reserved_qty -= it->second;
+    }
+    if (side == Side::Bid) {
+        const std::int64_t required = config.mode == AccountRiskMode::CashOnly ? limit_notional + limit_fee : buy_reserve(account_id, symbol, price, qty, limit_fee);
+        if (config.mode == AccountRiskMode::CashOnly) {
+            return account.cash_balance - reserved_cash < required ? std::optional<RejectReason>{RejectReason::InsufficientCash} : std::nullopt;
+        }
+        MarginSnapshot snapshot = account_margin_snapshot(account_id);
+        snapshot.available_buying_power += static_cast<double>(account.reserved_cash - reserved_cash + account.reserved_short_margin - reserved_short) / initial_margin_requirement(config, symbol);
+        return snapshot.available_buying_power + 1e-9 < static_cast<double>(limit_notional + limit_fee) ? std::optional<RejectReason>{RejectReason::InsufficientBuyingPower} : std::nullopt;
+    }
+
+    const std::int64_t position = account.position_qty_by_symbol.contains(symbol) ? account.position_qty_by_symbol.at(symbol) : 0;
+    if (position - reserved_qty >= qty.value) return std::nullopt;
+    if (!config.allow_short_selling) {
+        return RejectReason::InsufficientPosition;
+    }
+    const std::int64_t short_qty = qty.value - std::max<std::int64_t>(0, position - reserved_qty);
+    const std::int64_t required_short = short_margin_reserve(account_id, symbol, price, short_qty);
+    if (config.mode == AccountRiskMode::CashOnly) {
+        return account.cash_balance - reserved_cash - reserved_short < required_short ? std::optional<RejectReason>{RejectReason::MarginRequirementFailed} : std::nullopt;
+    }
+    MarginSnapshot snapshot = account_margin_snapshot(account_id);
+    snapshot.available_buying_power += static_cast<double>(account.reserved_short_margin - reserved_short) / short_margin_requirement(config, symbol);
+    return snapshot.available_buying_power + 1e-9 < static_cast<double>(price.ticks * short_qty) ? std::optional<RejectReason>{RejectReason::MarginRequirementFailed} : std::nullopt;
+}
+
 void MatchingEngine::set_account_state(AccountId account_id, std::int64_t cash_balance, std::int64_t position_qty) {
     set_account_state(account_id, kDefaultSymbol, cash_balance, position_qty);
 }
@@ -80,15 +201,15 @@ void MatchingEngine::append_ledger_entry(const AccountLedgerEntry& entry) {
 void MatchingEngine::assert_invariants(const Symbol& symbol, AccountId account_id, AccountId maker_account_id) const {
     const AccountSnapshot& taker = accounts_.at(account_id);
     const AccountSnapshot& maker = accounts_.at(maker_account_id);
-    if (taker.cash_balance + taker.reserved_cash < 0 || maker.cash_balance + maker.reserved_cash < 0) {
-        throw std::runtime_error("cash+reserved_cash invariant violated");
+    if (taker.reserved_cash < 0 || maker.reserved_cash < 0 || taker.reserved_short_margin < 0 || maker.reserved_short_margin < 0) {
+        throw std::runtime_error("reserved cash invariant violated");
     }
     const auto taker_position = taker.position_qty_by_symbol.contains(symbol) ? taker.position_qty_by_symbol.at(symbol) : 0;
     const auto maker_position = maker.position_qty_by_symbol.contains(symbol) ? maker.position_qty_by_symbol.at(symbol) : 0;
     const auto taker_reserved = taker.reserved_qty_by_symbol.contains(symbol) ? taker.reserved_qty_by_symbol.at(symbol) : 0;
     const auto maker_reserved = maker.reserved_qty_by_symbol.contains(symbol) ? maker.reserved_qty_by_symbol.at(symbol) : 0;
-    if (taker_position + taker_reserved < 0 || maker_position + maker_reserved < 0) {
-        throw std::runtime_error("position+reserved_position invariant violated");
+    if (taker_reserved < 0 || maker_reserved < 0) {
+        throw std::runtime_error("reserved_position invariant violated");
     }
 }
 
@@ -103,21 +224,40 @@ void MatchingEngine::apply_position_accounting(AccountSnapshot& account, const S
     auto& position = account.position_qty_by_symbol[symbol];
     auto& average_cost = account.average_cost_by_symbol[symbol];
     auto& realized_for_symbol = account.realized_pnl_by_symbol[symbol];
+    std::int64_t remaining = qty.value;
     if (side == Side::Bid) {
-        const std::int64_t previous_position = position;
-        position += qty.value;
-        if (position > 0) {
-            average_cost = ((average_cost * static_cast<double>(previous_position)) +
-                            (static_cast<double>(price.ticks) * static_cast<double>(qty.value))) /
+        if (position < 0) {
+            const std::int64_t cover_qty = std::min<std::int64_t>(remaining, -position);
+            const double trade_pnl = (average_cost - static_cast<double>(price.ticks)) * static_cast<double>(cover_qty);
+            realized_for_symbol += trade_pnl;
+            account.realized_pnl += trade_pnl;
+            position += cover_qty;
+            remaining -= cover_qty;
+            if (position == 0) average_cost = 0.0;
+        }
+        if (remaining > 0) {
+            const std::int64_t previous_long = std::max<std::int64_t>(0, position);
+            position += remaining;
+            average_cost = ((average_cost * static_cast<double>(previous_long)) +
+                            (static_cast<double>(price.ticks) * static_cast<double>(remaining))) /
                            static_cast<double>(position);
         }
     } else {
-        const double trade_pnl = (static_cast<double>(price.ticks) - average_cost) * static_cast<double>(qty.value);
-        realized_for_symbol += trade_pnl;
-        account.realized_pnl += trade_pnl;
-        position -= qty.value;
-        if (position == 0) {
-            average_cost = 0.0;
+        if (position > 0) {
+            const std::int64_t sell_qty = std::min<std::int64_t>(remaining, position);
+            const double trade_pnl = (static_cast<double>(price.ticks) - average_cost) * static_cast<double>(sell_qty);
+            realized_for_symbol += trade_pnl;
+            account.realized_pnl += trade_pnl;
+            position -= sell_qty;
+            remaining -= sell_qty;
+            if (position == 0) average_cost = 0.0;
+        }
+        if (remaining > 0) {
+            const std::int64_t previous_short = position < 0 ? -position : 0;
+            position -= remaining;
+            average_cost = ((average_cost * static_cast<double>(previous_short)) +
+                            (static_cast<double>(price.ticks) * static_cast<double>(remaining))) /
+                           static_cast<double>(-position);
         }
     }
     if (fee != 0) {
@@ -223,13 +363,9 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
 
     const std::int64_t limit_notional = price.ticks * qty.value;
     const std::int64_t limit_fee = std::max(fee_for_notional(limit_notional, false), fee_for_notional(limit_notional, true));
-    if (side == Side::Bid && taker.cash_balance - taker.reserved_cash < limit_notional + limit_fee) {
+    if (const auto risk_failure = validate_order_risk(account_id, symbol, side, price, qty)) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
-        return {OrderRejected{side, price, qty, RejectReason::InsufficientCash, symbol}};
-    }
-    if (side == Side::Ask && taker.position_qty_by_symbol[symbol] - taker.reserved_qty_by_symbol[symbol] < qty.value) {
-        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
-        return {OrderRejected{side, price, qty, RejectReason::InsufficientPosition, symbol}};
+        return {OrderRejected{side, price, qty, *risk_failure, symbol}};
     }
 
     OrderBook& book = book_for(symbol);
@@ -255,6 +391,7 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
 
         const auto owner_it = order_ownership_by_id_.find(fill->maker_id);
         const AccountId maker_account_id = owner_it == order_ownership_by_id_.end() ? kDefaultAccountId : owner_it->second.account_id;
+        const std::int64_t maker_qty_before = owner_it == order_ownership_by_id_.end() ? fill->qty.value : owner_it->second.qty.value;
         AccountSnapshot& maker = accounts_[maker_account_id];
         const std::int64_t notional = fill->price.ticks * fill->qty.value;
 
@@ -268,11 +405,21 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
             apply_position_accounting(taker, symbol, Side::Bid, fill->price, fill->qty, taker_fee);
             maker.cash_balance += notional - maker_fee;
             apply_position_accounting(maker, symbol, Side::Ask, fill->price, fill->qty, maker_fee);
-            maker.reserved_qty_by_symbol[symbol] -= fill->qty.value;
             if (auto reserve_it = reserved_qty_by_order_id_.find(fill->maker_id); reserve_it != reserved_qty_by_order_id_.end()) {
-                reserve_it->second -= fill->qty.value;
+                const std::int64_t release = std::min(reserve_it->second, fill->qty.value);
+                maker.reserved_qty_by_symbol[symbol] -= release;
+                reserve_it->second -= release;
                 if (reserve_it->second == 0) {
                     reserved_qty_by_order_id_.erase(reserve_it);
+                }
+            }
+            if (auto reserve_it = reserved_short_margin_by_order_id_.find(fill->maker_id); reserve_it != reserved_short_margin_by_order_id_.end()) {
+                const std::int64_t release = maker_qty_before <= 0 ? reserve_it->second : static_cast<std::int64_t>(std::ceil(static_cast<double>(reserve_it->second) * static_cast<double>(fill->qty.value) / static_cast<double>(maker_qty_before)));
+                const std::int64_t bounded_release = std::min(reserve_it->second, release);
+                maker.reserved_short_margin -= bounded_release;
+                reserve_it->second -= bounded_release;
+                if (reserve_it->second == 0) {
+                    reserved_short_margin_by_order_id_.erase(reserve_it);
                 }
             }
         } else {
@@ -280,9 +427,11 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
             apply_position_accounting(taker, symbol, Side::Ask, fill->price, fill->qty, taker_fee);
             maker.cash_balance -= notional + maker_fee;
             apply_position_accounting(maker, symbol, Side::Bid, fill->price, fill->qty, maker_fee);
-            maker.reserved_cash -= notional;
             if (auto reserve_it = reserved_cash_by_order_id_.find(fill->maker_id); reserve_it != reserved_cash_by_order_id_.end()) {
-                reserve_it->second -= notional;
+                const std::int64_t release = maker_qty_before <= 0 ? reserve_it->second : static_cast<std::int64_t>(std::ceil(static_cast<double>(reserve_it->second) * static_cast<double>(fill->qty.value) / static_cast<double>(maker_qty_before)));
+                const std::int64_t bounded_release = std::min(reserve_it->second, release);
+                maker.reserved_cash -= bounded_release;
+                reserve_it->second -= bounded_release;
                 if (reserve_it->second == 0) {
                     reserved_cash_by_order_id_.erase(reserve_it);
                 }
@@ -343,14 +492,26 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
 
             order_ownership_by_id_[taker_id] = {account_id, symbol, side, price, remaining};
             if (side == Side::Bid) {
-                const std::int64_t reserve = price.ticks * remaining.value;
+                const std::int64_t reserve_notional = price.ticks * remaining.value;
+                const std::int64_t reserve_fee = std::max(fee_for_notional(reserve_notional, false), fee_for_notional(reserve_notional, true));
+                const std::int64_t reserve = buy_reserve(account_id, symbol, price, remaining, reserve_fee);
                 taker.reserved_cash += reserve;
                 reserved_cash_by_order_id_[taker_id] = reserve;
                 append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, reserve, 0, taker_id, std::nullopt});
             } else {
-                taker.reserved_qty_by_symbol[symbol] += remaining.value;
-                reserved_qty_by_order_id_[taker_id] = remaining.value;
-                append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, 0, remaining.value, taker_id, std::nullopt});
+                const std::int64_t available_long = std::max<std::int64_t>(0, taker.position_qty_by_symbol[symbol] - taker.reserved_qty_by_symbol[symbol]);
+                const std::int64_t long_reserve = std::min(remaining.value, available_long);
+                const std::int64_t short_reserve_qty = remaining.value - long_reserve;
+                if (long_reserve > 0) {
+                    taker.reserved_qty_by_symbol[symbol] += long_reserve;
+                    reserved_qty_by_order_id_[taker_id] = long_reserve;
+                }
+                const std::int64_t short_reserve = short_margin_reserve(account_id, symbol, price, short_reserve_qty);
+                if (short_reserve > 0) {
+                    taker.reserved_short_margin += short_reserve;
+                    reserved_short_margin_by_order_id_[taker_id] = short_reserve;
+                }
+                append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, short_reserve, long_reserve, taker_id, std::nullopt});
             }
             events.insert(events.end(), accepted_events.begin(), accepted_events.end());
         }
@@ -443,6 +604,11 @@ std::vector<Event> MatchingEngine::cancel(AccountId account_id, OrderId id) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "cancel_release", 0, 0, 0, -reserve_it->second, id, std::nullopt});
         reserved_qty_by_order_id_.erase(reserve_it);
     }
+    if (const auto reserve_it = reserved_short_margin_by_order_id_.find(id); reserve_it != reserved_short_margin_by_order_id_.end()) {
+        account.reserved_short_margin -= reserve_it->second;
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "cancel_release", 0, 0, -reserve_it->second, 0, id, std::nullopt});
+        reserved_short_margin_by_order_id_.erase(reserve_it);
+    }
     order_ownership_by_id_.erase(ownership_it);
     track_events(events);
     return events;
@@ -469,6 +635,10 @@ std::vector<Event> MatchingEngine::replace_order(AccountId account_id, OrderId i
 
     const Side side = ownership_it->second.side;
     const Symbol symbol = ownership_it->second.symbol;
+    if (const auto risk_failure = validate_order_risk(account_id, symbol, side, new_price, new_qty, id)) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_rejected_risk_failure", 0, 0, 0, 0, id, std::nullopt});
+        return {OrderRejected{side, new_price, new_qty, *risk_failure, symbol}};
+    }
     append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_release_re_reserve", 0, 0, 0, 0, id, std::nullopt});
     std::vector<Event> events = cancel(account_id, id);
     std::vector<Event> replacement = place_limit_order_with_account_and_id(account_id, symbol, id, side, new_price, new_qty,

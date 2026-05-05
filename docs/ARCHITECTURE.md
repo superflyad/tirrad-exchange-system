@@ -106,3 +106,43 @@ The following project checks are part of the current architecture validation wor
 - **Task 13:** persistence layer for run/event/summary artifacts.
 - **Task 14:** API/service boundary for run control and data retrieval.
 - **Task 15:** dashboard experience for observability and analysis workflows.
+
+## Account risk modes
+
+TES accounts default to cash-only risk controls. In cash-only mode, buy orders require
+available cash for the full limit notional plus fees, and sell orders require an
+available long position. This preserves the historical zero-margin/no-short behavior
+unless an account is explicitly configured otherwise.
+
+Margin mode is configured per account through `set_account_risk_config(account_id,
+config)`. A margin config can set `max_leverage`, `initial_margin_requirement`,
+`maintenance_margin_requirement`, and `short_margin_requirement`. Resting buy orders
+reserve buying power according to the initial margin requirement, and cancel/replace
+paths release and recalculate the exact reserve.
+
+Short selling is controlled separately with `allow_short_selling`. When enabled,
+sell orders can exceed the current long position, short positions are represented as
+negative per-symbol quantities, and resting short orders reserve short margin. Buying
+against a negative position covers the short before opening a long position.
+
+Risk state is inspectable with `account_buying_power(account_id)` and
+`account_margin_snapshot(account_id)`. The margin snapshot reports gross exposure,
+net liquidation value/equity, margin used, available buying power, short exposure,
+maintenance requirement, and a deterministic `margin_call` flag when equity is below
+the maintenance requirement.
+
+Example Python setup:
+
+```python
+engine.set_account_risk_config(
+    7,
+    {
+        "mode": "Margin",
+        "allow_short_selling": True,
+        "max_leverage": 2.0,
+        "initial_margin_requirement": 0.5,
+        "maintenance_margin_requirement": 0.25,
+        "short_margin_requirement": 0.5,
+    },
+)
+```

@@ -26,6 +26,7 @@ add_executable(tes_engine_tests
     tests/test_order_book.cpp
     tests/test_matching_engine.cpp
     tests/test_replay_log.cpp
+    tests/test_accounting.cpp
 )
 
 target_include_directories(tes_engine_tests

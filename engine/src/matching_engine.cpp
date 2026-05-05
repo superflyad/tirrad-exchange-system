@@ -349,6 +349,43 @@ void MatchingEngine::maybe_emit_top_of_book_change(const Symbol& symbol, std::ve
     }
 }
 
-void MatchingEngine::track_events(const std::vector<Event>&) {}
+void MatchingEngine::track_events(const std::vector<Event>& events) {
+    bump_sequence_number_from_events(events);
+}
+
+void MatchingEngine::bump_sequence_number_from_events(const std::vector<Event>& events) {
+    for (const Event& event : events) {
+        if (std::holds_alternative<OrderAccepted>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<OrderAccepted>(event).symbol];
+        } else if (std::holds_alternative<OrderCanceled>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<OrderCanceled>(event).symbol];
+        } else if (std::holds_alternative<TradeExecuted>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<TradeExecuted>(event).symbol];
+        }
+    }
+}
+
+BookSnapshot MatchingEngine::snapshot(std::size_t levels) const { return snapshot(kDefaultSymbol, levels); }
+
+BookSnapshot MatchingEngine::snapshot(const Symbol& symbol, std::size_t levels) const {
+    BookSnapshot result;
+    result.symbol = symbol;
+    result.sequence_number = sequence_number(symbol);
+    const BookDepth book_depth = depth(symbol, levels);
+    for (const auto& level : book_depth.bids) {
+        result.bids.push_back(BookLevel{symbol, Side::Bid, level.price, level.qty});
+    }
+    for (const auto& level : book_depth.asks) {
+        result.asks.push_back(BookLevel{symbol, Side::Ask, level.price, level.qty});
+    }
+    return result;
+}
+
+std::uint64_t MatchingEngine::sequence_number() const { return sequence_number(kDefaultSymbol); }
+
+std::uint64_t MatchingEngine::sequence_number(const Symbol& symbol) const {
+    const auto it = sequence_numbers_by_symbol_.find(symbol);
+    return it == sequence_numbers_by_symbol_.end() ? 0 : it->second;
+}
 
 }  // namespace tes

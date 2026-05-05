@@ -172,6 +172,33 @@ namespace {
     return out;
 }
 
+[[nodiscard]] py::dict snapshot_to_py(const tes::BookSnapshot& snapshot) {
+    auto level_to_py = [](const tes::BookLevel& level) {
+        py::dict out;
+        out["symbol"] = level.symbol;
+        out["side"] = level.side == tes::Side::Bid ? "BUY" : "SELL";
+        out["price"] = level.price.ticks;
+        out["qty"] = level.qty.value;
+        return out;
+    };
+
+    py::list bids;
+    for (const tes::BookLevel& level : snapshot.bids) {
+        bids.append(level_to_py(level));
+    }
+    py::list asks;
+    for (const tes::BookLevel& level : snapshot.asks) {
+        asks.append(level_to_py(level));
+    }
+
+    py::dict out;
+    out["symbol"] = snapshot.symbol;
+    out["sequence_number"] = snapshot.sequence_number;
+    out["bids"] = bids;
+    out["asks"] = asks;
+    return out;
+}
+
 [[nodiscard]] std::vector<py::dict> events_to_dicts(const std::vector<tes::Event>& events) {
     std::vector<py::dict> out;
     out.reserve(events.size());
@@ -247,5 +274,13 @@ PYBIND11_MODULE(tes_engine, m) {
              [](const tes::MatchingEngine& self, std::size_t levels, const std::string& symbol) {
                  return depth_to_py(self.depth(symbol, levels));
              },
-             py::arg("levels"), py::arg("symbol") = tes::kDefaultSymbol);
+             py::arg("levels"), py::arg("symbol") = tes::kDefaultSymbol)
+        .def("snapshot",
+             [](const tes::MatchingEngine& self, std::size_t levels, const std::string& symbol) {
+                 return snapshot_to_py(self.snapshot(symbol, levels));
+             },
+             py::arg("levels"), py::arg("symbol") = tes::kDefaultSymbol)
+        .def("sequence_number",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { return self.sequence_number(symbol); },
+             py::arg("symbol") = tes::kDefaultSymbol);
 }

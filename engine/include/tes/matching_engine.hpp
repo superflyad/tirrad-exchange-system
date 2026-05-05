@@ -11,6 +11,18 @@ namespace tes {
 
 struct PriceLevel { Price price; Qty qty; };
 struct BookDepth { std::vector<PriceLevel> bids; std::vector<PriceLevel> asks; };
+struct BookLevel {
+    Symbol symbol{kDefaultSymbol};
+    Side side{Side::Bid};
+    Price price{};
+    Qty qty{};
+};
+struct BookSnapshot {
+    Symbol symbol{kDefaultSymbol};
+    std::vector<BookLevel> bids;
+    std::vector<BookLevel> asks;
+    std::uint64_t sequence_number{0};
+};
 
 class MatchingEngine {
   public:
@@ -38,6 +50,10 @@ class MatchingEngine {
     [[nodiscard]] std::vector<Event> replace_order(AccountId account_id, OrderId id, Price new_price, Qty new_qty);
     [[nodiscard]] BookDepth depth(std::size_t levels) const;
     [[nodiscard]] BookDepth depth(const Symbol& symbol, std::size_t levels) const;
+    [[nodiscard]] BookSnapshot snapshot(std::size_t levels) const;
+    [[nodiscard]] BookSnapshot snapshot(const Symbol& symbol, std::size_t levels) const;
+    [[nodiscard]] std::uint64_t sequence_number() const;
+    [[nodiscard]] std::uint64_t sequence_number(const Symbol& symbol) const;
 
     [[nodiscard]] const OrderBook& book() const;
 
@@ -48,6 +64,7 @@ class MatchingEngine {
     [[nodiscard]] OrderBook& book_for(const Symbol& symbol);
     [[nodiscard]] const OrderBook* find_book(const Symbol& symbol) const;
     void track_events(const std::vector<Event>& events);
+    void bump_sequence_number_from_events(const std::vector<Event>& events);
 
     std::unordered_map<Symbol, OrderBook> books_;
     OrderId next_order_id_ = 1;
@@ -55,6 +72,7 @@ class MatchingEngine {
     std::unordered_map<OrderId, OrderOwnership> order_ownership_by_id_;
     std::unordered_map<OrderId, std::int64_t> reserved_cash_by_order_id_;
     std::unordered_map<OrderId, std::int64_t> reserved_qty_by_order_id_;
+    std::unordered_map<Symbol, std::uint64_t> sequence_numbers_by_symbol_;
 };
 
 }  // namespace tes

@@ -25,7 +25,7 @@ class BacktestStep:
 
 @dataclass(frozen=True)
 class BacktestReport:
-    starting_equity: int; ending_equity: int; realized_pnl: int; unrealized_pnl: int
+    starting_equity: int; ending_equity: int; realized_pnl: float; unrealized_pnl: float; total_fees: int
     total_traded_notional: int; total_trades: int; total_orders: int; fill_ratio: float; rejected_orders: int
     per_symbol_volume: dict[str, int]; per_symbol_position: dict[str, int]; cash_balance: int; equity_curve: list[int]
 
@@ -85,7 +85,12 @@ class BacktestRunner:
         for t in trades: per_symbol_volume[t.data.symbol]=per_symbol_volume.get(t.data.symbol,0)+t.data.qty
         curve=[self._config.initial_cash]+[s["equity"] for s in account_states]
         end=curve[-1]
-        return BacktestReport(self._config.initial_cash,end,end-self._config.initial_cash,0,sum(t.data.price*t.data.qty for t in trades),len(trades),len(commands),(len(trades)/len(commands) if commands else 0.0),len(rejects),per_symbol_volume,dict(positions),cash,curve)
+        total_fees = 0
+        if hasattr(self._engine, "account_ledger"):
+            total_fees = sum(int(entry.get("fee_delta", 0)) for entry in self._engine.account_ledger(0))
+        unrealized = float(account_states[-1]["equity"] - cash) if account_states else 0.0
+        realized = float(end - self._config.initial_cash - unrealized)
+        return BacktestReport(self._config.initial_cash,end,realized,unrealized,total_fees,sum(t.data.price*t.data.qty for t in trades),len(trades),len(commands),(len(trades)/len(commands) if commands else 0.0),len(rejects),per_symbol_volume,dict(positions),cash,curve)
 
 def export_result_json(result: BacktestResult, path: Path) -> None:
     path.write_text(result.to_json()+"\n", encoding="utf-8")

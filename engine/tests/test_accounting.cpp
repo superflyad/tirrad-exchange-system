@@ -82,3 +82,83 @@ TEST_CASE("risk rejection creates audit entry") {
     REQUIRE(!ledger.empty());
     CHECK(ledger.back().reason == "order_rejected_risk_failure");
 }
+
+TEST_CASE("zero fee preserves legacy settlement cash behavior") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 10'000, 10);
+    engine.set_account_state(2, "AAA", 10'000, 0);
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+
+    CHECK(engine.latest_account_snapshot(1).cash_balance == 10'200);
+    CHECK(engine.latest_account_snapshot(2).cash_balance == 9'800);
+    CHECK(engine.performance_snapshot(2).realized_pnl == doctest::Approx(0.0));
+}
+
+TEST_CASE("maker and taker fees are deducted and recorded") {
+    tes::MatchingEngine engine;
+    engine.set_fee_model(tes::MatchingEngine::FeeModel{0.01, 0.02, 1});
+    engine.set_account_state(1, "AAA", 10'000, 10);
+    engine.set_account_state(2, "AAA", 10'000, 0);
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{10});
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{10});
+
+    CHECK(engine.latest_account_snapshot(1).cash_balance == 10'989);
+    CHECK(engine.latest_account_snapshot(2).cash_balance == 8'979);
+    const auto seller_ledger = engine.account_ledger(1, "AAA");
+    const auto buyer_ledger = engine.account_ledger(2, "AAA");
+    CHECK(seller_ledger.back().reason == "fee");
+    CHECK(seller_ledger.back().fee_delta == 11);
+    CHECK(buyer_ledger.back().reason == "fee");
+    CHECK(buyer_ledger.back().fee_delta == 21);
+}
+
+TEST_CASE("realized pnl is positive on profitable sell and negative on losing sell") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 100'000, 0);
+    engine.set_account_state(2, "AAA", 100'000, 10);
+    engine.set_account_state(3, "AAA", 100'000, 0);
+    engine.set_account_state(4, "AAA", 100'000, 0);
+
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{10});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{10});
+    (void)engine.place_limit_order(3, "AAA", tes::Side::Bid, tes::Price{120}, tes::Qty{5});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Ask, tes::Price{120}, tes::Qty{5});
+    CHECK(engine.performance_snapshot(1).realized_pnl == doctest::Approx(100.0));
+
+    (void)engine.place_limit_order(4, "AAA", tes::Side::Bid, tes::Price{90}, tes::Qty{5});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Ask, tes::Price{90}, tes::Qty{5});
+    CHECK(engine.performance_snapshot(1).realized_pnl == doctest::Approx(50.0));
+    CHECK(engine.performance_snapshot(1).realized_pnl_by_symbol.at("AAA") == doctest::Approx(50.0));
+}
+
+TEST_CASE("average cost updates across multiple buys") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 100'000, 0);
+    engine.set_account_state(2, "AAA", 100'000, 4);
+    engine.set_account_state(3, "AAA", 100'000, 4);
+
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(3, "AAA", tes::Side::Ask, tes::Price{200}, tes::Qty{2});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{200}, tes::Qty{2});
+
+    CHECK(engine.latest_account_snapshot(1).average_cost_by_symbol.at("AAA") == doctest::Approx(150.0));
+}
+
+TEST_CASE("unrealized pnl uses latest mark") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 100'000, 0);
+    engine.set_account_state(2, "AAA", 100'000, 1);
+    engine.set_account_state(3, "AAA", 100'000, 0);
+    engine.set_account_state(4, "AAA", 100'000, 1);
+
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{1});
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    (void)engine.place_limit_order(3, "AAA", tes::Side::Bid, tes::Price{120}, tes::Qty{1});
+    (void)engine.place_limit_order(4, "AAA", tes::Side::Ask, tes::Price{140}, tes::Qty{1});
+
+    const auto snapshot = engine.performance_snapshot(1);
+    CHECK(snapshot.unrealized_pnl == doctest::Approx(30.0));
+    CHECK(snapshot.total_equity == doctest::Approx(100'030.0));
+}

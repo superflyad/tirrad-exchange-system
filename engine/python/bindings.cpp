@@ -208,11 +208,41 @@ namespace {
     for (const auto& [symbol, qty] : snapshot.position_qty_by_symbol) positions[symbol.c_str()] = qty;
     py::dict reserved_positions;
     for (const auto& [symbol, qty] : snapshot.reserved_qty_by_symbol) reserved_positions[symbol.c_str()] = qty;
+    py::dict average_cost;
+    for (const auto& [symbol, value] : snapshot.average_cost_by_symbol) average_cost[symbol.c_str()] = value;
+    py::dict realized_by_symbol;
+    for (const auto& [symbol, value] : snapshot.realized_pnl_by_symbol) realized_by_symbol[symbol.c_str()] = value;
     py::dict out;
     out["cash_balance"] = snapshot.cash_balance;
     out["reserved_cash"] = snapshot.reserved_cash;
     out["positions"] = positions;
     out["reserved_positions"] = reserved_positions;
+    out["average_cost"] = average_cost;
+    out["realized_pnl"] = snapshot.realized_pnl;
+    out["realized_pnl_by_symbol"] = realized_by_symbol;
+    return out;
+}
+
+[[nodiscard]] py::dict performance_snapshot_to_py(const tes::MatchingEngine::PerformanceSnapshot& snapshot) {
+    py::dict positions;
+    for (const auto& [symbol, qty] : snapshot.position_qty_by_symbol) positions[symbol.c_str()] = qty;
+    py::dict average_cost;
+    for (const auto& [symbol, value] : snapshot.average_cost_by_symbol) average_cost[symbol.c_str()] = value;
+    py::dict realized_by_symbol;
+    for (const auto& [symbol, value] : snapshot.realized_pnl_by_symbol) realized_by_symbol[symbol.c_str()] = value;
+    py::dict unrealized_by_symbol;
+    for (const auto& [symbol, value] : snapshot.unrealized_pnl_by_symbol) unrealized_by_symbol[symbol.c_str()] = value;
+    py::dict out;
+    out["cash"] = snapshot.cash_balance;
+    out["cash_balance"] = snapshot.cash_balance;
+    out["reserved_cash"] = snapshot.reserved_cash;
+    out["positions"] = positions;
+    out["average_cost"] = average_cost;
+    out["realized_pnl"] = snapshot.realized_pnl;
+    out["realized_pnl_by_symbol"] = realized_by_symbol;
+    out["unrealized_pnl"] = snapshot.unrealized_pnl;
+    out["unrealized_pnl_by_symbol"] = unrealized_by_symbol;
+    out["total_equity"] = snapshot.total_equity;
     return out;
 }
 
@@ -228,6 +258,7 @@ namespace {
     out["reserved_position_delta"] = entry.reserved_position_delta;
     out["related_order_id"] = entry.related_order_id.has_value() ? py::cast(*entry.related_order_id) : py::none();
     out["related_trade_id"] = entry.related_trade_id.has_value() ? py::cast(*entry.related_trade_id) : py::none();
+    out["fee_delta"] = entry.fee_delta;
     return out;
 }
 [[nodiscard]] std::vector<py::dict> events_to_dicts(const std::vector<tes::Event>& events) {
@@ -320,24 +351,43 @@ PYBIND11_MODULE(tes_engine, m) {
         .def("all_histories_to_json", &tes::MarketDataRecorder::all_histories_to_json);
     py::class_<tes::MatchingEngine>(m, "MatchingEngine")
         .def(py::init<>())
+        .def("set_fee_model",
+             [](tes::MatchingEngine& self, double maker_fee_rate, double taker_fee_rate, std::optional<std::int64_t> fixed_fee) {
+                 self.set_fee_model(tes::MatchingEngine::FeeModel{maker_fee_rate, taker_fee_rate, fixed_fee});
+             },
+             py::arg("maker_fee_rate"), py::arg("taker_fee_rate"), py::arg("fixed_fee") = std::nullopt)
+        .def("fee_model",
+             [](const tes::MatchingEngine& self) {
+                 const auto model = self.fee_model();
+                 py::dict out;
+                 out["maker_fee_rate"] = model.maker_fee_rate;
+                 out["taker_fee_rate"] = model.taker_fee_rate;
+                 out["fixed_fee"] = model.fixed_fee.has_value() ? py::cast(*model.fixed_fee) : py::none();
+                 return out;
+             })
+        .def("set_account_state",
+             [](tes::MatchingEngine& self, std::uint64_t account_id, const std::string& symbol, std::int64_t cash_balance, std::int64_t position_qty) {
+                 self.set_account_state(account_id, symbol, cash_balance, position_qty);
+             },
+             py::arg("account_id"), py::arg("symbol"), py::arg("cash_balance"), py::arg("position_qty"))
         .def("place_limit_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty,
-                const std::string& time_in_force, const std::string& symbol) {
+                const std::string& time_in_force, const std::string& symbol, std::uint64_t account_id) {
                  const tes::Side parsed_side = side_from_string(side);
                  const tes::TimeInForce parsed_tif = tif_from_string(time_in_force);
                  const std::vector<tes::Event> events =
-                     self.place_limit_order(0, symbol, parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
+                     self.place_limit_order(account_id, symbol, parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
                  return events_to_dicts(events);
              },
              py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC",
-             py::arg("symbol") = tes::kDefaultSymbol)
+             py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
         .def("place_market_order",
-             [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty, const std::string& symbol) {
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty, const std::string& symbol, std::uint64_t account_id) {
                  const tes::Side parsed_side = side_from_string(side);
-                 const std::vector<tes::Event> events = self.place_market_order(0, symbol, parsed_side, tes::Qty{qty});
+                 const std::vector<tes::Event> events = self.place_market_order(account_id, symbol, parsed_side, tes::Qty{qty});
                  return events_to_dicts(events);
              },
-             py::arg("side"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol)
+             py::arg("side"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
         .def("cancel",
              [](tes::MatchingEngine& self, std::uint64_t order_id) {
                  const std::vector<tes::Event> events = self.cancel(order_id);
@@ -373,6 +423,11 @@ PYBIND11_MODULE(tes_engine, m) {
         .def("latest_account_snapshot",
              [](const tes::MatchingEngine& self, std::uint64_t account_id) {
                  return account_snapshot_to_py(self.latest_account_snapshot(account_id));
+             },
+             py::arg("account_id"))
+        .def("performance_snapshot",
+             [](const tes::MatchingEngine& self, std::uint64_t account_id) {
+                 return performance_snapshot_to_py(self.performance_snapshot(account_id));
              },
              py::arg("account_id"))
 .def("sequence_number",

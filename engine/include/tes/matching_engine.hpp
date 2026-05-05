@@ -28,6 +28,11 @@ struct BookSnapshot {
 
 class MatchingEngine {
   public:
+    struct FeeModel {
+        double maker_fee_rate = 0.0;
+        double taker_fee_rate = 0.0;
+        std::optional<std::int64_t> fixed_fee;
+    };
     struct AccountLedgerEntry {
         std::uint64_t sequence = 0;
         AccountId account_id = 0;
@@ -39,20 +44,38 @@ class MatchingEngine {
         std::int64_t reserved_position_delta = 0;
         std::optional<OrderId> related_order_id;
         std::optional<OrderId> related_trade_id;
+        std::int64_t fee_delta = 0;
     };
     struct AccountSnapshot {
         std::int64_t cash_balance = 0;
         std::unordered_map<Symbol, std::int64_t> position_qty_by_symbol;
         std::int64_t reserved_cash = 0;
         std::unordered_map<Symbol, std::int64_t> reserved_qty_by_symbol;
+        std::unordered_map<Symbol, double> average_cost_by_symbol;
+        std::unordered_map<Symbol, double> realized_pnl_by_symbol;
+        double realized_pnl = 0.0;
+    };
+    struct PerformanceSnapshot {
+        std::int64_t cash_balance = 0;
+        std::int64_t reserved_cash = 0;
+        std::unordered_map<Symbol, std::int64_t> position_qty_by_symbol;
+        std::unordered_map<Symbol, double> average_cost_by_symbol;
+        double realized_pnl = 0.0;
+        std::unordered_map<Symbol, double> realized_pnl_by_symbol;
+        std::unordered_map<Symbol, double> unrealized_pnl_by_symbol;
+        double unrealized_pnl = 0.0;
+        double total_equity = 0.0;
     };
 
+    void set_fee_model(FeeModel fee_model);
+    [[nodiscard]] FeeModel fee_model() const;
     void set_account_state(AccountId account_id, std::int64_t cash_balance, std::int64_t position_qty);
     void set_account_state(AccountId account_id, const Symbol& symbol, std::int64_t cash_balance, std::int64_t position_qty);
     [[nodiscard]] AccountSnapshot account_snapshot(AccountId account_id) const;
     [[nodiscard]] std::vector<AccountLedgerEntry> account_ledger(AccountId account_id) const;
     [[nodiscard]] std::vector<AccountLedgerEntry> account_ledger(AccountId account_id, const Symbol& symbol) const;
     [[nodiscard]] AccountSnapshot latest_account_snapshot(AccountId account_id) const;
+    [[nodiscard]] PerformanceSnapshot performance_snapshot(AccountId account_id) const;
     [[nodiscard]] std::optional<AccountId> order_owner(OrderId id) const;
 
     [[nodiscard]] std::vector<Event> place_limit_order(Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
@@ -83,8 +106,10 @@ class MatchingEngine {
     void track_events(const std::vector<Event>& events);
     void bump_sequence_number_from_events(const std::vector<Event>& events);
     void append_ledger_entry(const AccountLedgerEntry& entry);
-    void assert_invariants(const Symbol& symbol, AccountId taker_account_id, AccountId maker_account_id,
-                           std::int64_t notional, Side taker_side) const;
+    void assert_invariants(const Symbol& symbol, AccountId taker_account_id, AccountId maker_account_id) const;
+    [[nodiscard]] std::int64_t fee_for_notional(std::int64_t notional, bool maker) const;
+    void apply_position_accounting(AccountSnapshot& account, const Symbol& symbol, Side side, Price price, Qty qty, std::int64_t fee);
+    [[nodiscard]] std::optional<double> mark_price(const Symbol& symbol) const;
 
     std::unordered_map<Symbol, OrderBook> books_;
     OrderId next_order_id_ = 1;
@@ -95,6 +120,8 @@ class MatchingEngine {
     std::unordered_map<Symbol, std::uint64_t> sequence_numbers_by_symbol_;
     std::vector<AccountLedgerEntry> account_ledger_;
     std::uint64_t next_ledger_sequence_ = 1;
+    FeeModel fee_model_{};
+    std::unordered_map<Symbol, double> latest_mark_by_symbol_;
 };
 
 }  // namespace tes

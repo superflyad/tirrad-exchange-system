@@ -32,6 +32,8 @@ class MarketSessionRunner:
         per_symbol_volume = {s: 0 for s in self.config.symbols}
         rejected = 0
         total_orders = 0
+        session_cash = 0.0
+        session_positions: dict[str, int] = {s: 0 for s in self.config.symbols}
 
         latest_mid: dict[str, float] = {s: 0.0 for s in self.config.symbols}
         for step in range(self.config.steps):
@@ -47,6 +49,13 @@ class MarketSessionRunner:
                     for cmd in cmds:
                         events = execute_command(engine, cmd)
                         step_events.extend(events)
+                        side = getattr(cmd, "side", None)
+                        if side in {"BUY", "SELL"}:
+                            sign = 1 if side == "BUY" else -1
+                            for event in events:
+                                if event.type == "TradeExecuted":
+                                    session_positions[symbol] = session_positions.get(symbol, 0) + sign * event.data.qty
+                                    session_cash -= sign * event.data.price * event.data.qty
 
                 snapshot = engine.snapshot(self.config.depth_levels, symbol)
                 snapshots.append({"step": step, "symbol": symbol, "snapshot": snapshot})
@@ -82,6 +91,11 @@ class MarketSessionRunner:
                         detail = [item for item in steps if item["step"] == step]
                     progress_callback({"step": one_index_step, "total_steps": self.config.steps, "symbols": self.config.symbols, "total_orders": total_orders, "total_trades": len(trades), "latest_mid": dict(latest_mid), "rejected_orders": rejected, "detail": detail})
 
+        total_fees = sum(int(entry.get("fee_delta", 0)) for entry in engine.account_ledger(0)) if hasattr(engine, "account_ledger") else 0
+        per_symbol_pnl = {s: float(session_positions.get(s, 0)) * latest_mid.get(s, 0.0) for s in self.config.symbols}
+        final_equity = session_cash + sum(per_symbol_pnl.values()) - float(total_fees)
+        realized_pnl = session_cash - float(total_fees)
+        unrealized_pnl = sum(per_symbol_pnl.values())
         report = MarketSessionReport(
             total_steps=self.config.steps,
             total_orders=total_orders,
@@ -96,6 +110,11 @@ class MarketSessionRunner:
             per_symbol_volume=per_symbol_volume,
             rejected_orders=rejected,
             per_participant_pnl={p.participant_id: 0 for p in participants},
+            final_equity=final_equity,
+            per_symbol_pnl=per_symbol_pnl,
+            realized_pnl=realized_pnl,
+            unrealized_pnl=unrealized_pnl,
+            total_fees=total_fees,
         )
         analytics = {s: {"volume": per_symbol_volume[s], "final_price": last_price[s]} for s in self.config.symbols}
         return MarketSessionResult(self.config, steps, trades, snapshots, report, analytics)

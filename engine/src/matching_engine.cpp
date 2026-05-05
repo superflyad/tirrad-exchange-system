@@ -1,6 +1,7 @@
 #include <tes/matching_engine.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -19,6 +20,19 @@ constexpr std::int64_t kDefaultLegacyPosition = std::numeric_limits<std::int64_t
     return resting_price.ticks >= limit_price.ticks;
 }
 }  // namespace
+
+
+void MatchingEngine::set_fee_model(FeeModel fee_model) {
+    if (fee_model.maker_fee_rate < 0.0 || fee_model.taker_fee_rate < 0.0) {
+        throw std::invalid_argument("fee rates must be non-negative");
+    }
+    if (fee_model.fixed_fee.has_value() && *fee_model.fixed_fee < 0) {
+        throw std::invalid_argument("fixed fee must be non-negative");
+    }
+    fee_model_ = fee_model;
+}
+
+MatchingEngine::FeeModel MatchingEngine::fee_model() const { return fee_model_; }
 
 void MatchingEngine::set_account_state(AccountId account_id, std::int64_t cash_balance, std::int64_t position_qty) {
     set_account_state(account_id, kDefaultSymbol, cash_balance, position_qty);
@@ -63,8 +77,7 @@ void MatchingEngine::append_ledger_entry(const AccountLedgerEntry& entry) {
     account_ledger_.push_back(std::move(copy));
 }
 
-void MatchingEngine::assert_invariants(const Symbol& symbol, AccountId account_id, AccountId maker_account_id,
-                                       std::int64_t notional, Side taker_side) const {
+void MatchingEngine::assert_invariants(const Symbol& symbol, AccountId account_id, AccountId maker_account_id) const {
     const AccountSnapshot& taker = accounts_.at(account_id);
     const AccountSnapshot& maker = accounts_.at(maker_account_id);
     if (taker.cash_balance + taker.reserved_cash < 0 || maker.cash_balance + maker.reserved_cash < 0) {
@@ -77,11 +90,80 @@ void MatchingEngine::assert_invariants(const Symbol& symbol, AccountId account_i
     if (taker_position + taker_reserved < 0 || maker_position + maker_reserved < 0) {
         throw std::runtime_error("position+reserved_position invariant violated");
     }
-    const std::int64_t buyer_cash_delta = taker_side == Side::Bid ? -notional : notional;
-    const std::int64_t seller_cash_delta = taker_side == Side::Bid ? notional : -notional;
-    if (buyer_cash_delta + seller_cash_delta != 0) {
-        throw std::runtime_error("trade cash transfer invariant violated");
+}
+
+std::int64_t MatchingEngine::fee_for_notional(std::int64_t notional, bool maker) const {
+    const double rate = maker ? fee_model_.maker_fee_rate : fee_model_.taker_fee_rate;
+    const std::int64_t variable_fee = static_cast<std::int64_t>(std::llround(static_cast<double>(notional) * rate));
+    return variable_fee + fee_model_.fixed_fee.value_or(0);
+}
+
+void MatchingEngine::apply_position_accounting(AccountSnapshot& account, const Symbol& symbol, Side side, Price price, Qty qty,
+                                               std::int64_t fee) {
+    auto& position = account.position_qty_by_symbol[symbol];
+    auto& average_cost = account.average_cost_by_symbol[symbol];
+    auto& realized_for_symbol = account.realized_pnl_by_symbol[symbol];
+    if (side == Side::Bid) {
+        const std::int64_t previous_position = position;
+        position += qty.value;
+        if (position > 0) {
+            average_cost = ((average_cost * static_cast<double>(previous_position)) +
+                            (static_cast<double>(price.ticks) * static_cast<double>(qty.value))) /
+                           static_cast<double>(position);
+        }
+    } else {
+        const double trade_pnl = (static_cast<double>(price.ticks) - average_cost) * static_cast<double>(qty.value);
+        realized_for_symbol += trade_pnl;
+        account.realized_pnl += trade_pnl;
+        position -= qty.value;
+        if (position == 0) {
+            average_cost = 0.0;
+        }
     }
+    if (fee != 0) {
+        realized_for_symbol -= static_cast<double>(fee);
+        account.realized_pnl -= static_cast<double>(fee);
+    }
+}
+
+std::optional<double> MatchingEngine::mark_price(const Symbol& symbol) const {
+    const OrderBook* book = find_book(symbol);
+    if (book != nullptr) {
+        const auto bid = book->best_bid();
+        const auto ask = book->best_ask();
+        if (bid.has_value() && ask.has_value()) {
+            return (static_cast<double>(bid->ticks) + static_cast<double>(ask->ticks)) / 2.0;
+        }
+    }
+    const auto it = latest_mark_by_symbol_.find(symbol);
+    return it == latest_mark_by_symbol_.end() ? std::nullopt : std::optional<double>{it->second};
+}
+
+MatchingEngine::PerformanceSnapshot MatchingEngine::performance_snapshot(AccountId account_id) const {
+    PerformanceSnapshot out;
+    const auto it = accounts_.find(account_id);
+    if (it == accounts_.end()) {
+        return out;
+    }
+    const AccountSnapshot& account = it->second;
+    out.cash_balance = account.cash_balance;
+    out.reserved_cash = account.reserved_cash;
+    out.position_qty_by_symbol = account.position_qty_by_symbol;
+    out.average_cost_by_symbol = account.average_cost_by_symbol;
+    out.realized_pnl = account.realized_pnl;
+    out.realized_pnl_by_symbol = account.realized_pnl_by_symbol;
+    out.total_equity = static_cast<double>(account.cash_balance);
+    for (const auto& [symbol, qty] : account.position_qty_by_symbol) {
+        const double avg = account.average_cost_by_symbol.contains(symbol) ? account.average_cost_by_symbol.at(symbol) : 0.0;
+        const auto mark = mark_price(symbol);
+        const double unrealized = mark.has_value() ? (mark.value() - avg) * static_cast<double>(qty) : 0.0;
+        out.unrealized_pnl_by_symbol[symbol] = unrealized;
+        out.unrealized_pnl += unrealized;
+        if (mark.has_value()) {
+            out.total_equity += mark.value() * static_cast<double>(qty);
+        }
+    }
+    return out;
 }
 std::optional<AccountId> MatchingEngine::order_owner(OrderId id) const {
     const auto it = order_ownership_by_id_.find(id);
@@ -140,7 +222,8 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
     }
 
     const std::int64_t limit_notional = price.ticks * qty.value;
-    if (side == Side::Bid && taker.cash_balance - taker.reserved_cash < limit_notional) {
+    const std::int64_t limit_fee = std::max(fee_for_notional(limit_notional, false), fee_for_notional(limit_notional, true));
+    if (side == Side::Bid && taker.cash_balance - taker.reserved_cash < limit_notional + limit_fee) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
         return {OrderRejected{side, price, qty, RejectReason::InsufficientCash, symbol}};
     }
@@ -178,11 +261,13 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
         remaining.value -= fill->qty.value;
         events.emplace_back(TradeExecuted{taker_id, fill->maker_id, side, fill->price, fill->qty, symbol});
 
+        const std::int64_t taker_fee = fee_for_notional(notional, false);
+        const std::int64_t maker_fee = fee_for_notional(notional, true);
         if (side == Side::Bid) {
-            taker.cash_balance -= notional;
-            taker.position_qty_by_symbol[symbol] += fill->qty.value;
-            maker.cash_balance += notional;
-            maker.position_qty_by_symbol[symbol] -= fill->qty.value;
+            taker.cash_balance -= notional + taker_fee;
+            apply_position_accounting(taker, symbol, Side::Bid, fill->price, fill->qty, taker_fee);
+            maker.cash_balance += notional - maker_fee;
+            apply_position_accounting(maker, symbol, Side::Ask, fill->price, fill->qty, maker_fee);
             maker.reserved_qty_by_symbol[symbol] -= fill->qty.value;
             if (auto reserve_it = reserved_qty_by_order_id_.find(fill->maker_id); reserve_it != reserved_qty_by_order_id_.end()) {
                 reserve_it->second -= fill->qty.value;
@@ -191,10 +276,10 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
                 }
             }
         } else {
-            taker.cash_balance += notional;
-            taker.position_qty_by_symbol[symbol] -= fill->qty.value;
-            maker.cash_balance -= notional;
-            maker.position_qty_by_symbol[symbol] += fill->qty.value;
+            taker.cash_balance += notional - taker_fee;
+            apply_position_accounting(taker, symbol, Side::Ask, fill->price, fill->qty, taker_fee);
+            maker.cash_balance -= notional + maker_fee;
+            apply_position_accounting(maker, symbol, Side::Bid, fill->price, fill->qty, maker_fee);
             maker.reserved_cash -= notional;
             if (auto reserve_it = reserved_cash_by_order_id_.find(fill->maker_id); reserve_it != reserved_cash_by_order_id_.end()) {
                 reserve_it->second -= notional;
@@ -203,18 +288,25 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
                 }
             }
         }
+        latest_mark_by_symbol_[symbol] = static_cast<double>(fill->price.ticks);
 
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "trade_settlement",
             side == Side::Bid ? -notional : notional,
             side == Side::Bid ? fill->qty.value : -fill->qty.value,
-            0, 0, taker_id, fill->maker_id});
+            0, 0, taker_id, fill->maker_id, 0});
         append_ledger_entry(AccountLedgerEntry{0, maker_account_id, symbol, "trade_settlement",
             side == Side::Bid ? notional : -notional,
             side == Side::Bid ? -fill->qty.value : fill->qty.value,
             side == Side::Ask ? -notional : 0,
             side == Side::Bid ? -fill->qty.value : 0,
-            fill->maker_id, taker_id});
-        assert_invariants(symbol, account_id, maker_account_id, notional, side);
+            fill->maker_id, taker_id, 0});
+        if (taker_fee != 0) {
+            append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "fee", -taker_fee, 0, 0, 0, taker_id, fill->maker_id, taker_fee});
+        }
+        if (maker_fee != 0) {
+            append_ledger_entry(AccountLedgerEntry{0, maker_account_id, symbol, "fee", -maker_fee, 0, 0, 0, fill->maker_id, taker_id, maker_fee});
+        }
+        assert_invariants(symbol, account_id, maker_account_id);
 
         if (owner_it != order_ownership_by_id_.end()) {
             owner_it->second.qty.value -= fill->qty.value;

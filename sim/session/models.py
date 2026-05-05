@@ -35,6 +35,11 @@ class MarketSessionReport:
     per_symbol_volume: dict[str, int]
     rejected_orders: int
     per_participant_pnl: dict[str, int]
+    final_equity: float
+    per_symbol_pnl: dict[str, float]
+    realized_pnl: float
+    unrealized_pnl: float
+    total_fees: int
 
 
 @dataclass(frozen=True)

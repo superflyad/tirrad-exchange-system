@@ -30,6 +30,9 @@ def handle_backtest(args: argparse.Namespace) -> int:
     print(f"Total Orders: {result.metrics.total_orders}")
     print(f"Total Trades: {result.metrics.total_trades}")
     print(f"Ending Equity: {result.metrics.ending_equity}")
+    print(f"Fees: {result.metrics.total_fees}")
+    print(f"Realized PnL: {result.metrics.realized_pnl}")
+    print(f"Unrealized PnL: {result.metrics.unrealized_pnl}")
     if args.output_json:
         output = Path(args.output_json)
         export_result_json(result, output)

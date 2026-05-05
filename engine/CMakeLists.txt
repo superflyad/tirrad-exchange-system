@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(tes_engine STATIC
     src/version.cpp
     src/matching_engine.cpp
+    src/market_data.cpp
 )
 
 set_target_properties(tes_engine PROPERTIES
@@ -27,6 +28,7 @@ add_executable(tes_engine_tests
     tests/test_matching_engine.cpp
     tests/test_replay_log.cpp
     tests/test_accounting.cpp
+    tests/test_market_data.cpp
 )
 
 target_include_directories(tes_engine_tests

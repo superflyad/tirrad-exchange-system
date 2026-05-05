@@ -6,13 +6,16 @@
 #include <vector>
 
 #include <pybind11/pybind11.h>
+#include <pybind11/detail/common.h>
 #include <pybind11/stl.h>
 
 #include <tes/events.hpp>
+#include <tes/market_data.hpp>
 #include <tes/matching_engine.hpp>
 #include <tes/types.hpp>
 
 namespace py = pybind11;
+using namespace pybind11::literals;
 
 namespace {
 
@@ -237,6 +240,56 @@ PYBIND11_MODULE(tes_engine, m) {
         .value("FOK", tes::TimeInForce::Fok)
         .export_values();
 
+
+    py::class_<tes::MarketDataRecord>(m, "MarketDataRecord")
+        .def_property_readonly("symbol", [](const tes::MarketDataRecord& self) { return self.symbol; })
+        .def_property_readonly("sequence_number", [](const tes::MarketDataRecord& self) { return self.sequence_number; })
+        .def_property_readonly("step", [](const tes::MarketDataRecord& self) { return self.step; })
+        .def_property_readonly("timestamp", [](const tes::MarketDataRecord& self) { return self.timestamp; })
+        .def_property_readonly("bids", [](const tes::MarketDataRecord& self) { py::list levels; for (const auto& level : self.bids) levels.append(py::dict("symbol"_a=level.symbol,"side"_a=(level.side==tes::Side::Bid?"BUY":"SELL"),"price"_a=level.price.ticks,"qty"_a=level.qty.value)); return levels; })
+        .def_property_readonly("asks", [](const tes::MarketDataRecord& self) { py::list levels; for (const auto& level : self.asks) levels.append(py::dict("symbol"_a=level.symbol,"side"_a=(level.side==tes::Side::Bid?"BUY":"SELL"),"price"_a=level.price.ticks,"qty"_a=level.qty.value)); return levels; })
+        .def_property_readonly("triggering_event_names", [](const tes::MarketDataRecord& self) { return self.triggering_event_names; });
+
+    py::class_<tes::MarketDataSummary>(m, "MarketDataSummary")
+        .def_readonly("best_bid", &tes::MarketDataSummary::best_bid)
+        .def_readonly("best_ask", &tes::MarketDataSummary::best_ask)
+        .def_readonly("mid_price", &tes::MarketDataSummary::mid_price)
+        .def_readonly("spread", &tes::MarketDataSummary::spread)
+        .def_readonly("total_bid_qty", &tes::MarketDataSummary::total_bid_qty)
+        .def_readonly("total_ask_qty", &tes::MarketDataSummary::total_ask_qty)
+        .def_readonly("imbalance", &tes::MarketDataSummary::imbalance);
+
+    py::class_<tes::MarketDataRecorder>(m, "MarketDataRecorder")
+        .def(py::init<std::optional<std::size_t>>(), py::arg("max_records_per_symbol") = std::nullopt)
+        .def("record_snapshot", [](tes::MarketDataRecorder& self, const py::dict& raw_snapshot) {
+                 tes::BookSnapshot snapshot;
+                 snapshot.symbol = raw_snapshot["symbol"].cast<std::string>();
+                 snapshot.sequence_number = raw_snapshot["sequence_number"].cast<std::uint64_t>();
+                 for (const auto& item : raw_snapshot["bids"].cast<py::list>()) {
+                     const auto level = item.cast<py::dict>();
+                     snapshot.bids.push_back(tes::BookLevel{level["symbol"].cast<std::string>(), tes::Side::Bid,
+                         tes::Price{level["price"].cast<std::int64_t>()}, tes::Qty{level["qty"].cast<std::int64_t>()}});
+                 }
+                 for (const auto& item : raw_snapshot["asks"].cast<py::list>()) {
+                     const auto level = item.cast<py::dict>();
+                     snapshot.asks.push_back(tes::BookLevel{level["symbol"].cast<std::string>(), tes::Side::Ask,
+                         tes::Price{level["price"].cast<std::int64_t>()}, tes::Qty{level["qty"].cast<std::int64_t>()}});
+                 }
+                 self.record_snapshot(snapshot);
+             })
+        .def("history", &tes::MarketDataRecorder::history)
+        .def("latest", &tes::MarketDataRecorder::latest)
+        .def("clear", &tes::MarketDataRecorder::clear)
+        .def("clear_all", &tes::MarketDataRecorder::clear_all)
+        .def("size", &tes::MarketDataRecorder::size)
+        .def("symbols", &tes::MarketDataRecorder::symbols)
+        .def("summary", &tes::MarketDataRecorder::summary)
+        .def("spread_series", &tes::MarketDataRecorder::spread_series)
+        .def("mid_price_series", &tes::MarketDataRecorder::mid_price_series)
+        .def("sequence_series", &tes::MarketDataRecorder::sequence_series)
+        .def("record_to_json", &tes::MarketDataRecorder::record_to_json)
+        .def("history_to_json", &tes::MarketDataRecorder::history_to_json)
+        .def("all_histories_to_json", &tes::MarketDataRecorder::all_histories_to_json);
     py::class_<tes::MatchingEngine>(m, "MatchingEngine")
         .def(py::init<>())
         .def("place_limit_order",

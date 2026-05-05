@@ -237,8 +237,8 @@ PYBIND11_MODULE(tes_engine, m) {
              },
              py::arg("order_id"), py::arg("price_ticks"), py::arg("qty"))
         .def("depth",
-             [](const tes::MatchingEngine& self, std::size_t levels) {
-                 return depth_to_py(self.depth(levels));
+             [](const tes::MatchingEngine& self, std::size_t levels, const std::string& symbol) {
+                 return depth_to_py(self.depth(symbol, levels));
              },
-             py::arg("levels"));
+             py::arg("levels"), py::arg("symbol") = tes::kDefaultSymbol);
 }

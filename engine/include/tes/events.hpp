@@ -22,6 +22,7 @@ struct OrderAccepted {
     Side side;
     Price price;
     Qty qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct OrderRejected {
@@ -29,15 +30,18 @@ struct OrderRejected {
     Price price;
     Qty qty;
     RejectReason reason;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct OrderCanceled {
     OrderId id;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct CancelRejected {
     OrderId id;
     RejectReason reason;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct TradeExecuted {
@@ -46,26 +50,31 @@ struct TradeExecuted {
     Side taker_side;
     Price price;
     Qty qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct OrderPartiallyFilled {
     OrderId id;
     Qty last_fill_qty;
     Qty remaining_qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct OrderFilled {
     OrderId id;
     Qty last_fill_qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct OrderExpired {
     OrderId id;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct TopOfBook {
     std::optional<Price> best_bid;
     std::optional<Price> best_ask;
+    Symbol symbol{kDefaultSymbol};
 };
 
 using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,

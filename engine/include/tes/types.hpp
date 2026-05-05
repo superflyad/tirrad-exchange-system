@@ -2,11 +2,15 @@
 
 #include <compare>
 #include <cstdint>
+#include <string>
 
 namespace tes {
 
 using OrderId = std::uint64_t;
 using AccountId = std::uint64_t;
+using Symbol = std::string;
+
+inline constexpr const char* kDefaultSymbol = "DEFAULT";
 
 enum class Side { Bid, Ask };
 enum class OrderType { Limit, Market };

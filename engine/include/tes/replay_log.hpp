@@ -20,11 +20,13 @@ struct LimitOrderCommand {
     Side side;
     Price price;
     Qty qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct MarketOrderCommand {
     Side side;
     Qty qty;
+    Symbol symbol{kDefaultSymbol};
 };
 
 struct CancelOrderCommand {
@@ -176,9 +178,9 @@ class ReplayLog {
             [&engine](const auto& command) {
                 using T = std::decay_t<decltype(command)>;
                 if constexpr (std::is_same_v<T, LimitOrderCommand>) {
-                    return engine.place_limit_order(command.side, command.price, command.qty);
+                    return engine.place_limit_order(0, command.symbol, command.side, command.price, command.qty);
                 } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
-                    return engine.place_market_order(command.side, command.qty);
+                    return engine.place_market_order(0, command.symbol, command.side, command.qty);
                 } else {
                     return engine.cancel(command.id);
                 }

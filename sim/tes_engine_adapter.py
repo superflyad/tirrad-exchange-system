@@ -3,20 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 from sim.tes_models import TesEngineEvent, parse_events
-from sim.tes_models.commands import DEFAULT_SYMBOL, CancelOrderCommand, LimitOrderCommand, MarketOrderCommand, ReplaceOrderCommand, TesCommand
+from sim.tes_models.commands import (
+    CancelOrderCommand,
+    LimitOrderCommand,
+    MarketOrderCommand,
+    ReplaceOrderCommand,
+    TesCommand,
+)
 
 
 def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
     if isinstance(command, LimitOrderCommand):
         side = "Bid" if command.side == "BUY" else "Ask"
-        if command.symbol == DEFAULT_SYMBOL:
-            return parse_events(engine.place_limit_order(side, command.price, command.qty, command.time_in_force))
-        return parse_events(engine.place_limit_order(side, command.price, command.qty, command.time_in_force, command.symbol))
+        return parse_events(
+            engine.place_limit_order(side, command.price, command.qty, command.time_in_force, command.symbol)
+        )
 
     if isinstance(command, MarketOrderCommand):
         side = "Bid" if command.side == "BUY" else "Ask"
-        if command.symbol == DEFAULT_SYMBOL:
-            return parse_events(engine.place_market_order(side, command.qty))
         return parse_events(engine.place_market_order(side, command.qty, command.symbol))
 
     if isinstance(command, CancelOrderCommand):

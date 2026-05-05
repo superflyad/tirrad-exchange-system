@@ -10,17 +10,23 @@ class _FakeMatchingEngine:
     def __init__(self) -> None:
         self._next_order_id = 1
 
-    def place_limit_order(self, side: str, price: int, qty: int, time_in_force: str = "GTC") -> list[dict]:
+    def place_limit_order(
+        self, side: str, price: int, qty: int, time_in_force: str = "GTC", symbol: str = "DEFAULT"
+    ) -> list[dict]:
         order_id = self._next_order_id
         self._next_order_id += 1
         normalized_side = "BUY" if side == "Bid" else "SELL"
         return [
-            {"type": "OrderAccepted", "data": {"order_id": order_id, "side": normalized_side, "price": price, "qty": qty}},
+            {
+                "type": "OrderAccepted",
+                "data": {"order_id": order_id, "side": normalized_side, "price": price, "qty": qty, "symbol": symbol},
+            },
             {
                 "type": "TopOfBook",
                 "data": {
                     "best_bid": price if normalized_side == "BUY" else None,
                     "best_ask": price if normalized_side == "SELL" else None,
+                    "symbol": symbol,
                 },
             },
         ]

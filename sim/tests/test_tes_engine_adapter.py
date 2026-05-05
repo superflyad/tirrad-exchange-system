@@ -314,3 +314,29 @@ def test_symbol_aware_orders_depth_and_events_are_isolated() -> None:
 
     assert any(event.type == "TradeExecuted" and event.data.symbol == "AAA" for event in trades)
     assert len(engine.depth(5, "BBB")["bids"]) == 1
+
+
+def test_adapter_passes_default_symbol_explicitly_to_limit_and_market_calls() -> None:
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+
+        def place_limit_order(
+            self, side: str, price: int, qty: int, time_in_force: str, symbol: str
+        ) -> list[dict[str, object]]:
+            self.calls.append(("limit", side, price, qty, time_in_force, symbol))
+            return []
+
+        def place_market_order(self, side: str, qty: int, symbol: str) -> list[dict[str, object]]:
+            self.calls.append(("market", side, qty, symbol))
+            return []
+
+    engine = FakeEngine()
+
+    execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=1))
+    execute_command(engine, MarketOrderCommand(side="SELL", qty=2))
+
+    assert engine.calls == [
+        ("limit", "Bid", 100, 1, "GTC", "DEFAULT"),
+        ("market", "Ask", 2, "DEFAULT"),
+    ]

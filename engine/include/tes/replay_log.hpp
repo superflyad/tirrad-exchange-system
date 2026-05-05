@@ -21,6 +21,7 @@ struct LimitOrderCommand {
     Price price;
     Qty qty;
     Symbol symbol{kDefaultSymbol};
+    TimeInForce time_in_force{TimeInForce::Gtc};
 };
 
 struct MarketOrderCommand {
@@ -97,6 +98,19 @@ struct ReplayEntry {
         event);
 }
 
+[[nodiscard]] inline const char* time_in_force_name(TimeInForce time_in_force) {
+    switch (time_in_force) {
+        case TimeInForce::Gtc:
+            return "GTC";
+        case TimeInForce::Ioc:
+            return "IOC";
+        case TimeInForce::Fok:
+            return "FOK";
+    }
+
+    return "Unknown";
+}
+
 [[nodiscard]] inline std::string serialize_replay_command(const ReplayCommand& command) {
     return std::visit(
         [](const auto& value) {
@@ -105,7 +119,8 @@ struct ReplayEntry {
             if constexpr (std::is_same_v<T, LimitOrderCommand>) {
                 out << "{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\""
                     << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"price\":"
-                    << value.price.ticks << ",\"qty\":" << value.qty.value << ",\"symbol\":\""
+                    << value.price.ticks << ",\"qty\":" << value.qty.value << ",\"time_in_force\":\""
+                    << time_in_force_name(value.time_in_force) << "\",\"symbol\":\""
                     << json_escape(value.symbol) << "\"}}";
             } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                 out << "{\"type\":\"MarketOrderCommand\",\"data\":{\"side\":\""
@@ -184,7 +199,8 @@ class ReplayLog {
             [&engine](const auto& command) {
                 using T = std::decay_t<decltype(command)>;
                 if constexpr (std::is_same_v<T, LimitOrderCommand>) {
-                    return engine.place_limit_order(0, command.symbol, command.side, command.price, command.qty);
+                    return engine.place_limit_order(0, command.symbol, command.side, command.price, command.qty,
+                                                    command.time_in_force);
                 } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                     return engine.place_market_order(0, command.symbol, command.side, command.qty);
                 } else {

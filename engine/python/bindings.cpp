@@ -24,16 +24,13 @@ namespace {
 }
 
 [[nodiscard]] std::string reject_reason_to_string(tes::RejectReason reason) {
-    if (reason == tes::RejectReason::InvalidPrice) {
-        return "InvalidPrice";
-    }
-    if (reason == tes::RejectReason::InvalidQuantity) {
-        return "InvalidQuantity";
-    }
-    if (reason == tes::RejectReason::NoLiquidity) {
-        return "NoLiquidity";
-    }
-    return "UnknownOrderId";
+    if (reason == tes::RejectReason::InvalidPrice) return "InvalidPrice";
+    if (reason == tes::RejectReason::InvalidQuantity) return "InvalidQuantity";
+    if (reason == tes::RejectReason::UnknownOrderId) return "UnknownOrderId";
+    if (reason == tes::RejectReason::NoLiquidity) return "NoLiquidity";
+    if (reason == tes::RejectReason::InsufficientCash) return "InsufficientCash";
+    if (reason == tes::RejectReason::InsufficientPosition) return "InsufficientPosition";
+    return "WrongAccount";
 }
 
 [[nodiscard]] tes::Side side_from_string(const std::string& side) {
@@ -59,6 +56,7 @@ namespace {
                 data["side"] = side_to_string(evt.side);
                 data["price"] = evt.price.ticks;
                 data["qty"] = evt.qty.value;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderRejected>) {
@@ -69,6 +67,7 @@ namespace {
                 data["price"] = evt.price.ticks;
                 data["qty"] = evt.qty.value;
                 data["reason"] = reject_reason_to_string(evt.reason);
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderCanceled>) {
@@ -76,6 +75,7 @@ namespace {
                 out["type"] = "OrderCanceled";
                 py::dict data;
                 data["order_id"] = evt.id;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::CancelRejected>) {
@@ -84,6 +84,7 @@ namespace {
                 py::dict data;
                 data["order_id"] = evt.id;
                 data["reason"] = reject_reason_to_string(evt.reason);
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::TradeExecuted>) {
@@ -94,6 +95,7 @@ namespace {
                 data["qty"] = evt.qty.value;
                 data["maker_order_id"] = evt.maker_id;
                 data["taker_order_id"] = evt.taker_id;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderPartiallyFilled>) {
@@ -103,6 +105,7 @@ namespace {
                 data["order_id"] = evt.id;
                 data["last_fill_qty"] = evt.last_fill_qty.value;
                 data["remaining_qty"] = evt.remaining_qty.value;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderFilled>) {
@@ -111,6 +114,7 @@ namespace {
                 py::dict data;
                 data["order_id"] = evt.id;
                 data["last_fill_qty"] = evt.last_fill_qty.value;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else if constexpr (std::is_same_v<T, tes::OrderExpired>) {
@@ -118,6 +122,7 @@ namespace {
                 out["type"] = "OrderExpired";
                 py::dict data;
                 data["order_id"] = evt.id;
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             } else {
@@ -134,6 +139,7 @@ namespace {
                 } else {
                     data["best_ask"] = py::none();
                 }
+                data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
             }
@@ -208,21 +214,22 @@ PYBIND11_MODULE(tes_engine, m) {
         .def(py::init<>())
         .def("place_limit_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty,
-                const std::string& time_in_force) {
+                const std::string& time_in_force, const std::string& symbol) {
                  const tes::Side parsed_side = side_from_string(side);
                  const tes::TimeInForce parsed_tif = tif_from_string(time_in_force);
                  const std::vector<tes::Event> events =
-                     self.place_limit_order(parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
+                     self.place_limit_order(0, symbol, parsed_side, tes::Price{price_ticks}, tes::Qty{qty}, parsed_tif);
                  return events_to_dicts(events);
              },
-             py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC")
+             py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC",
+             py::arg("symbol") = tes::kDefaultSymbol)
         .def("place_market_order",
-             [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty) {
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty, const std::string& symbol) {
                  const tes::Side parsed_side = side_from_string(side);
-                 const std::vector<tes::Event> events = self.place_market_order(parsed_side, tes::Qty{qty});
+                 const std::vector<tes::Event> events = self.place_market_order(0, symbol, parsed_side, tes::Qty{qty});
                  return events_to_dicts(events);
              },
-             py::arg("side"), py::arg("qty"))
+             py::arg("side"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol)
         .def("cancel",
              [](tes::MatchingEngine& self, std::uint64_t order_id) {
                  const std::vector<tes::Event> events = self.cancel(order_id);

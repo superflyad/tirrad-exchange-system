@@ -91,3 +91,12 @@ def test_parse_events_multiple() -> None:
 def test_parse_event_rejections(raw: object) -> None:
     with pytest.raises(ValueError):
         parse_event(raw)  # type: ignore[arg-type]
+
+
+def test_parse_event_accepts_optional_symbol() -> None:
+    event = parse_event(
+        {"type": "TradeExecuted", "data": {"price": 100, "qty": 5, "maker_order_id": 10, "taker_order_id": 11, "symbol": "AAA"}}
+    )
+
+    assert event.type == "TradeExecuted"
+    assert event.data.symbol == "AAA"

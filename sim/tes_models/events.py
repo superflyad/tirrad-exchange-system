@@ -3,6 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
+DEFAULT_SYMBOL = "DEFAULT"
+RejectReasonLiteral: TypeAlias = Literal[
+    "InvalidPrice",
+    "InvalidQuantity",
+    "UnknownOrderId",
+    "NoLiquidity",
+    "InsufficientCash",
+    "InsufficientPosition",
+    "WrongAccount",
+]
+
 
 @dataclass(frozen=True)
 class OrderAcceptedData:
@@ -10,11 +21,13 @@ class OrderAcceptedData:
     side: Literal["BUY", "SELL"]
     price: int
     qty: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class OrderCanceledData:
     order_id: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -22,13 +35,15 @@ class OrderRejectedData:
     side: Literal["BUY", "SELL"]
     price: int
     qty: int
-    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]
+    reason: RejectReasonLiteral
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class CancelRejectedData:
     order_id: int
-    reason: Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]
+    reason: RejectReasonLiteral
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -37,6 +52,7 @@ class TradeExecutedData:
     qty: int
     maker_order_id: int
     taker_order_id: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -44,23 +60,27 @@ class OrderPartiallyFilledData:
     order_id: int
     last_fill_qty: int
     remaining_qty: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class OrderFilledData:
     order_id: int
     last_fill_qty: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class OrderExpiredData:
     order_id: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class TopOfBookData:
     best_bid: int | None
     best_ask: int | None
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -133,7 +153,6 @@ TesEngineEvent: TypeAlias = (
 TesEvent: TypeAlias = TesEngineEvent
 
 
-
 def _require_dict(value: Any, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{name} must be a dict")
@@ -144,6 +163,13 @@ def _require_exact_keys(value: dict[str, Any], expected: set[str], name: str) ->
     keys = set(value.keys())
     if keys != expected:
         raise ValueError(f"{name} keys must be exactly {sorted(expected)}, got {sorted(keys)}")
+
+
+def _require_event_keys(value: dict[str, Any], expected: set[str], name: str) -> None:
+    keys = set(value.keys())
+    with_symbol = expected | {"symbol"}
+    if keys != expected and keys != with_symbol:
+        raise ValueError(f"{name} keys must be exactly {sorted(expected)} or {sorted(with_symbol)}, got {sorted(keys)}")
 
 
 def _require_int(value: Any, field_name: str) -> int:
@@ -158,15 +184,34 @@ def _require_optional_int(value: Any, field_name: str) -> int | None:
     return _require_int(value, field_name)
 
 
+def _require_symbol(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("symbol must be a string")
+    return value
+
+
+def _optional_symbol(data: dict[str, Any]) -> str:
+    return _require_symbol(data.get("symbol", DEFAULT_SYMBOL))
+
+
 def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     if value not in {"BUY", "SELL"}:
         raise ValueError("side must be either 'BUY' or 'SELL'")
     return value
 
 
-def _require_reject_reason(value: Any) -> Literal["InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"]:
-    if value not in {"InvalidPrice", "InvalidQuantity", "UnknownOrderId", "NoLiquidity"}:
-        raise ValueError("reason must be one of InvalidPrice, InvalidQuantity, UnknownOrderId, NoLiquidity")
+def _require_reject_reason(value: Any) -> RejectReasonLiteral:
+    allowed = {
+        "InvalidPrice",
+        "InvalidQuantity",
+        "UnknownOrderId",
+        "NoLiquidity",
+        "InsufficientCash",
+        "InsufficientPosition",
+        "WrongAccount",
+    }
+    if value not in allowed:
+        raise ValueError(f"reason must be one of {', '.join(sorted(allowed))}")
     return value
 
 
@@ -181,7 +226,7 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
     data = _require_dict(event["data"], "event.data")
 
     if event_type == "OrderAccepted":
-        _require_exact_keys(data, {"order_id", "side", "price", "qty"}, "OrderAccepted.data")
+        _require_event_keys(data, {"order_id", "side", "price", "qty"}, "OrderAccepted.data")
         return OrderAccepted(
             type="OrderAccepted",
             data=OrderAcceptedData(
@@ -189,11 +234,12 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
                 side=_require_side(data["side"]),
                 price=_require_int(data["price"], "price"),
                 qty=_require_int(data["qty"], "qty"),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "OrderRejected":
-        _require_exact_keys(data, {"side", "price", "qty", "reason"}, "OrderRejected.data")
+        _require_event_keys(data, {"side", "price", "qty", "reason"}, "OrderRejected.data")
         return OrderRejected(
             type="OrderRejected",
             data=OrderRejectedData(
@@ -201,28 +247,30 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
                 price=_require_int(data["price"], "price"),
                 qty=_require_int(data["qty"], "qty"),
                 reason=_require_reject_reason(data["reason"]),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "OrderCanceled":
-        _require_exact_keys(data, {"order_id"}, "OrderCanceled.data")
+        _require_event_keys(data, {"order_id"}, "OrderCanceled.data")
         return OrderCanceled(
             type="OrderCanceled",
-            data=OrderCanceledData(order_id=_require_int(data["order_id"], "order_id")),
+            data=OrderCanceledData(order_id=_require_int(data["order_id"], "order_id"), symbol=_optional_symbol(data)),
         )
 
     if event_type == "CancelRejected":
-        _require_exact_keys(data, {"order_id", "reason"}, "CancelRejected.data")
+        _require_event_keys(data, {"order_id", "reason"}, "CancelRejected.data")
         return CancelRejected(
             type="CancelRejected",
             data=CancelRejectedData(
                 order_id=_require_int(data["order_id"], "order_id"),
                 reason=_require_reject_reason(data["reason"]),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "TradeExecuted":
-        _require_exact_keys(data, {"price", "qty", "maker_order_id", "taker_order_id"}, "TradeExecuted.data")
+        _require_event_keys(data, {"price", "qty", "maker_order_id", "taker_order_id"}, "TradeExecuted.data")
         return TradeExecuted(
             type="TradeExecuted",
             data=TradeExecutedData(
@@ -230,45 +278,49 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
                 qty=_require_int(data["qty"], "qty"),
                 maker_order_id=_require_int(data["maker_order_id"], "maker_order_id"),
                 taker_order_id=_require_int(data["taker_order_id"], "taker_order_id"),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "TopOfBook":
-        _require_exact_keys(data, {"best_bid", "best_ask"}, "TopOfBook.data")
+        _require_event_keys(data, {"best_bid", "best_ask"}, "TopOfBook.data")
         return TopOfBook(
             type="TopOfBook",
             data=TopOfBookData(
                 best_bid=_require_optional_int(data["best_bid"], "best_bid"),
                 best_ask=_require_optional_int(data["best_ask"], "best_ask"),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "OrderPartiallyFilled":
-        _require_exact_keys(data, {"order_id", "last_fill_qty", "remaining_qty"}, "OrderPartiallyFilled.data")
+        _require_event_keys(data, {"order_id", "last_fill_qty", "remaining_qty"}, "OrderPartiallyFilled.data")
         return OrderPartiallyFilled(
             type="OrderPartiallyFilled",
             data=OrderPartiallyFilledData(
                 order_id=_require_int(data["order_id"], "order_id"),
                 last_fill_qty=_require_int(data["last_fill_qty"], "last_fill_qty"),
                 remaining_qty=_require_int(data["remaining_qty"], "remaining_qty"),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "OrderFilled":
-        _require_exact_keys(data, {"order_id", "last_fill_qty"}, "OrderFilled.data")
+        _require_event_keys(data, {"order_id", "last_fill_qty"}, "OrderFilled.data")
         return OrderFilled(
             type="OrderFilled",
             data=OrderFilledData(
                 order_id=_require_int(data["order_id"], "order_id"),
                 last_fill_qty=_require_int(data["last_fill_qty"], "last_fill_qty"),
+                symbol=_optional_symbol(data),
             ),
         )
 
     if event_type == "OrderExpired":
-        _require_exact_keys(data, {"order_id"}, "OrderExpired.data")
+        _require_event_keys(data, {"order_id"}, "OrderExpired.data")
         return OrderExpired(
             type="OrderExpired",
-            data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id")),
+            data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id"), symbol=_optional_symbol(data)),
         )
 
     raise ValueError(f"unknown event type: {event_type}")

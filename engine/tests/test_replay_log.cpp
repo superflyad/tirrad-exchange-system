@@ -8,6 +8,16 @@
 
 namespace {
 
+std::vector<tes::TradeExecuted> collect_trades(const std::vector<tes::Event>& events) {
+    std::vector<tes::TradeExecuted> trades;
+    for (const tes::Event& event : events) {
+        if (std::holds_alternative<tes::TradeExecuted>(event)) {
+            trades.push_back(std::get<tes::TradeExecuted>(event));
+        }
+    }
+    return trades;
+}
+
 bool events_equal(const tes::Event& left, const tes::Event& right) {
     if (left.index() != right.index()) {
         return false;
@@ -106,7 +116,7 @@ TEST_CASE("replay log serializes entries with sequence command and events") {
     const std::string serialized = log.to_json();
 
     CHECK(serialized ==
-          "[{\"sequence\":0,\"command\":{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\"Ask\",\"price\":104,\"qty\":7}},\"events\":[{\"type\":\"OrderAccepted\",\"data\":{}},{\"type\":\"TopOfBook\",\"data\":{}}]},{\"sequence\":1,\"command\":{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":7}},\"events\":[]}]" );
+          "[{\"sequence\":0,\"command\":{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\"Ask\",\"price\":104,\"qty\":7,\"symbol\":\"DEFAULT\"}},\"events\":[{\"type\":\"OrderAccepted\",\"data\":{\"symbol\":\"DEFAULT\"}},{\"type\":\"TopOfBook\",\"data\":{\"symbol\":\"DEFAULT\"}}]},{\"sequence\":1,\"command\":{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":7}},\"events\":[]}]");
 }
 
 TEST_CASE("replay commands re-executes stream and reproduces recorded events") {
@@ -133,4 +143,24 @@ TEST_CASE("replay commands re-executes stream and reproduces recorded events") {
             CHECK(events_equal(replay[event_index], original[event_index]));
         }
     }
+}
+
+TEST_CASE("replay serializes and replays symbol-aware commands and events") {
+    tes::ReplayLog log;
+    log.record(tes::LimitOrderCommand{tes::Side::Ask, tes::Price{100}, tes::Qty{2}, "AAA"},
+               {tes::OrderAccepted{1, tes::Side::Ask, tes::Price{100}, tes::Qty{2}, "AAA"}});
+    log.record(tes::LimitOrderCommand{tes::Side::Bid, tes::Price{100}, tes::Qty{2}, "BBB"},
+               {tes::OrderAccepted{2, tes::Side::Bid, tes::Price{100}, tes::Qty{2}, "BBB"}});
+
+    const std::string json = log.to_json();
+    CHECK(json.find("\"symbol\":\"AAA\"") != std::string::npos);
+    CHECK(json.find("\"symbol\":\"BBB\"") != std::string::npos);
+
+    const auto replayed = tes::replay_commands(log.entries());
+    REQUIRE(replayed.size() == 2);
+    CHECK(collect_trades(replayed[1]).empty());
+    REQUIRE(std::holds_alternative<tes::OrderAccepted>(replayed[0].front()));
+    CHECK(std::get<tes::OrderAccepted>(replayed[0].front()).symbol == "AAA");
+    REQUIRE(std::holds_alternative<tes::OrderAccepted>(replayed[1].front()));
+    CHECK(std::get<tes::OrderAccepted>(replayed[1].front()).symbol == "BBB");
 }

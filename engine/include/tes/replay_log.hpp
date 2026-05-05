@@ -87,9 +87,14 @@ struct ReplayEntry {
 }
 
 [[nodiscard]] inline std::string serialize_replay_event(const Event& event) {
-    std::ostringstream out;
-    out << "{\"type\":\"" << event_type_name(event) << "\",\"data\":{}}";
-    return out.str();
+    return std::visit(
+        [](const auto& value) {
+            std::ostringstream out;
+            out << "{\"type\":\"" << event_type_name(Event{value}) << "\",\"data\":{\"symbol\":\""
+                << json_escape(value.symbol) << "\"}}";
+            return out.str();
+        },
+        event);
 }
 
 [[nodiscard]] inline std::string serialize_replay_command(const ReplayCommand& command) {
@@ -100,11 +105,12 @@ struct ReplayEntry {
             if constexpr (std::is_same_v<T, LimitOrderCommand>) {
                 out << "{\"type\":\"LimitOrderCommand\",\"data\":{\"side\":\""
                     << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"price\":"
-                    << value.price.ticks << ",\"qty\":" << value.qty.value << "}}";
+                    << value.price.ticks << ",\"qty\":" << value.qty.value << ",\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
             } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                 out << "{\"type\":\"MarketOrderCommand\",\"data\":{\"side\":\""
                     << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"qty\":" << value.qty.value
-                    << "}}";
+                    << ",\"symbol\":\"" << json_escape(value.symbol) << "\"}}";
             } else {
                 out << "{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":" << value.id << "}}";
             }

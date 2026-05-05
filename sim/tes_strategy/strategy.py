@@ -19,8 +19,15 @@ class Strategy:
     def on_start(self) -> list[TesCommand]:
         raise NotImplementedError
 
+    def on_market_data(self, snapshots: dict[str, dict[str, int | str | list[dict[str, int | str]]]]) -> list[TesCommand]:
+        _ = snapshots
+        return []
+
     def on_event(self, event: TesEngineEvent) -> list[TesCommand]:
         raise NotImplementedError
+
+    def on_finish(self) -> None:
+        return None
 
 
 class SimpleMarketMaker(Strategy):

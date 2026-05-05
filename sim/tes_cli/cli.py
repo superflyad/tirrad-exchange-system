@@ -43,6 +43,14 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--depth-levels", type=int, default=5, help="Depth levels to print (>= 0)")
     run_parser.set_defaults(func=_handle_run, handler=_handle_run)
 
+    backtest_parser = sim_subparsers.add_parser("backtest", help="Run a strategy backtest")
+    backtest_parser.add_argument("--strategy", required=True)
+    backtest_parser.add_argument("--symbols", default="DEFAULT")
+    backtest_parser.add_argument("--initial-cash", type=int, default=1_000_000)
+    backtest_parser.add_argument("--depth-levels", type=int, default=5)
+    backtest_parser.add_argument("--output-json", default=None)
+    backtest_parser.set_defaults(handler=_handle_backtest)
+
     list_strategies_parser = sim_subparsers.add_parser(
         "list-strategies",
         help="List available strategies",
@@ -87,6 +95,11 @@ def _handle_replay(args: argparse.Namespace) -> int:
 
     return int(replay_saved_run(run_id=args.run_id, base_dir=Path(args.runs_dir)))
 
+
+def _handle_backtest(args: argparse.Namespace) -> int:
+    from sim.tes_cli.commands.backtest import handle_backtest
+
+    return int(handle_backtest(args))
 
 def _handle_list_strategies(args: argparse.Namespace) -> int:
     from sim.tes_cli.commands.list_strategies import handle_list_strategies

@@ -90,7 +90,20 @@ Usage:
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
   ./${SCRIPT_NAME} sim <command>
+  ./${SCRIPT_NAME} bench [preset]
 USAGE
+}
+
+run_bench() {
+  local preset="${1:-$(default_preset)}"
+  echo "[TES] Configure preset: ${preset}"
+  cmake --preset "${preset}"
+  echo "[TES] Build preset: ${preset}"
+  cmake --build --preset "${preset}"
+  local exe="out/build/${preset}/engine/tes_engine_bench"
+  if is_windows_shell; then exe="${exe}.exe"; fi
+  echo "[TES] Run benchmark: ${exe}"
+  "${exe}"
 }
 
 run_sim_cli() {
@@ -158,6 +171,9 @@ case "$cmd" in
     ;;
   sim)
     run_sim_cli "$@"
+    ;;
+  bench)
+    run_bench "${2:-}"
     ;;
   ""|-h|--help|help)
     usage

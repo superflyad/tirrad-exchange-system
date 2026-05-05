@@ -36,7 +36,6 @@ class OrderBook {
         if (!is_valid_price(order.price) || !is_valid_qty(order.qty)) {
             return {};
         }
-
         if (order_index.contains(order.id)) {
             return {};
         }
@@ -45,15 +44,19 @@ class OrderBook {
         const std::optional<Price> previous_best_ask = best_ask();
 
         if (order.side == Side::Bid) {
-            bids[order.price].push_back(order);
+            auto& level = bids[order.price];
+            level.aggregate_qty.value += order.qty.value;
+            level.orders.push_back(order);
         } else {
-            asks[order.price].push_back(order);
+            auto& level = asks[order.price];
+            level.aggregate_qty.value += order.qty.value;
+            level.orders.push_back(order);
         }
         order_index[order.id] = {order.side, order.price};
 
         std::vector<Event> events;
+        events.reserve(2);
         events.emplace_back(OrderAccepted{order.id, order.side, order.price, order.qty});
-
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
         return events;
     }
@@ -66,7 +69,6 @@ class OrderBook {
 
         const std::optional<Price> previous_best_bid = best_bid();
         const std::optional<Price> previous_best_ask = best_ask();
-
         const Side side = index_it->second.first;
         const Price price = index_it->second.second;
 
@@ -75,54 +77,44 @@ class OrderBook {
         } else {
             erase_from_levels(asks, id, price);
         }
-
         order_index.erase(index_it);
 
         std::vector<Event> events;
+        events.reserve(2);
         events.emplace_back(OrderCanceled{id});
-
         maybe_emit_top_of_book_change(events, previous_best_bid, previous_best_ask);
         return events;
     }
 
     [[nodiscard]] std::optional<Price> best_bid() const {
-        if (bids.empty()) {
-            return std::nullopt;
-        }
-        return bids.begin()->first;
+        return bids.empty() ? std::nullopt : std::optional<Price>{bids.begin()->first};
     }
-
     [[nodiscard]] std::optional<Price> best_ask() const {
-        if (asks.empty()) {
-            return std::nullopt;
-        }
-        return asks.begin()->first;
+        return asks.empty() ? std::nullopt : std::optional<Price>{asks.begin()->first};
     }
 
     [[nodiscard]] std::optional<Order> front_of_level(Side side, Price price) const {
         if (side == Side::Bid) {
             const auto it = bids.find(price);
-            if (it == bids.end() || it->second.empty()) {
+            if (it == bids.end() || it->second.orders.empty()) {
                 return std::nullopt;
             }
-            return it->second.front();
+            return it->second.orders.front();
         }
-
         const auto it = asks.find(price);
-        if (it == asks.end() || it->second.empty()) {
+        if (it == asks.end() || it->second.orders.empty()) {
             return std::nullopt;
         }
-        return it->second.front();
+        return it->second.orders.front();
     }
 
     [[nodiscard]] std::size_t level_size(Side side, Price price) const {
         if (side == Side::Bid) {
             const auto it = bids.find(price);
-            return it == bids.end() ? 0U : it->second.size();
+            return it == bids.end() ? 0U : it->second.orders.size();
         }
-
         const auto it = asks.find(price);
-        return it == asks.end() ? 0U : it->second.size();
+        return it == asks.end() ? 0U : it->second.orders.size();
     }
 
     [[nodiscard]] std::optional<Order> find_order(OrderId id) const {
@@ -130,99 +122,67 @@ class OrderBook {
         if (index_it == order_index.end()) {
             return std::nullopt;
         }
-
         const Side side = index_it->second.first;
         const Price price = index_it->second.second;
-
         if (side == Side::Bid) {
             const auto level_it = bids.find(price);
-            if (level_it == bids.end()) {
-                return std::nullopt;
-            }
-            for (const Order& order : level_it->second) {
-                if (order.id == id) {
-                    return order;
-                }
+            if (level_it == bids.end()) return std::nullopt;
+            for (const Order& order : level_it->second.orders) {
+                if (order.id == id) return order;
             }
             return std::nullopt;
         }
-
         const auto level_it = asks.find(price);
-        if (level_it == asks.end()) {
-            return std::nullopt;
-        }
-        for (const Order& order : level_it->second) {
-            if (order.id == id) {
-                return order;
-            }
+        if (level_it == asks.end()) return std::nullopt;
+        for (const Order& order : level_it->second.orders) {
+            if (order.id == id) return order;
         }
         return std::nullopt;
     }
 
     [[nodiscard]] std::optional<FillResult> fill_best(Side side, Qty qty) {
-        if (!is_valid_qty(qty)) {
-            return std::nullopt;
-        }
-
-        if (side == Side::Bid) {
-            return fill_best_from_levels(bids, qty);
-        }
-
-        return fill_best_from_levels(asks, qty);
+        if (!is_valid_qty(qty)) return std::nullopt;
+        return side == Side::Bid ? fill_best_from_levels(bids, qty) : fill_best_from_levels(asks, qty);
     }
 
     [[nodiscard]] Qty executable_qty(Side taker_side, Price limit_price) const {
         Qty available{0};
-
         if (taker_side == Side::Bid) {
-            for (const auto& [price, orders] : asks) {
-                if (price.ticks > limit_price.ticks) {
-                    break;
-                }
-                for (const Order& order : orders) {
-                    available.value += order.qty.value;
-                }
+            for (const auto& [price, level] : asks) {
+                if (price.ticks > limit_price.ticks) break;
+                available.value += level.aggregate_qty.value;
             }
             return available;
         }
-
-        for (const auto& [price, orders] : bids) {
-            if (price.ticks < limit_price.ticks) {
-                break;
-            }
-            for (const Order& order : orders) {
-                available.value += order.qty.value;
-            }
+        for (const auto& [price, level] : bids) {
+            if (price.ticks < limit_price.ticks) break;
+            available.value += level.aggregate_qty.value;
         }
         return available;
     }
 
     [[nodiscard]] Depth depth(std::size_t levels) const {
         Depth snapshot;
-        if (levels == 0) {
-            return snapshot;
-        }
-
+        if (levels == 0) return snapshot;
+        snapshot.bids.reserve(std::min(levels, bids.size()));
+        snapshot.asks.reserve(std::min(levels, asks.size()));
         append_levels(snapshot.bids, bids, levels);
         append_levels(snapshot.asks, asks, levels);
         return snapshot;
     }
 
   private:
+    struct Level {
+        Qty aggregate_qty{0};
+        std::deque<Order> orders;
+    };
+
     template <typename PriceLevels>
     static void append_levels(std::vector<PriceLevel>& out, const PriceLevels& levels, std::size_t limit) {
         std::size_t count = 0;
-        for (const auto& [price, orders] : levels) {
-            if (count >= limit) {
-                break;
-            }
-
-            Qty total{0};
-            for (const Order& order : orders) {
-                total.value += order.qty.value;
-            }
-
-            out.push_back(PriceLevel{price, total});
+        for (const auto& [price, level] : levels) {
+            if (count >= limit) break;
+            out.push_back(PriceLevel{price, level.aggregate_qty});
             ++count;
         }
     }
@@ -230,70 +190,47 @@ class OrderBook {
     template <typename PriceLevels>
     static void erase_from_levels(PriceLevels& levels, OrderId id, Price price) {
         auto level_it = levels.find(price);
-        if (level_it == levels.end()) {
-            return;
-        }
-
-        auto& level_orders = level_it->second;
-        const auto order_it = std::find_if(level_orders.begin(), level_orders.end(), [id](const Order& order) {
-            return order.id == id;
-        });
-
-        if (order_it == level_orders.end()) {
-            return;
-        }
-
-        level_orders.erase(order_it);
-        if (level_orders.empty()) {
-            levels.erase(level_it);
-        }
+        if (level_it == levels.end()) return;
+        auto& level = level_it->second;
+        const auto order_it = std::find_if(level.orders.begin(), level.orders.end(), [id](const Order& order) { return order.id == id; });
+        if (order_it == level.orders.end()) return;
+        level.aggregate_qty.value -= order_it->qty.value;
+        level.orders.erase(order_it);
+        if (level.orders.empty()) levels.erase(level_it);
     }
 
     template <typename PriceLevels>
     std::optional<FillResult> fill_best_from_levels(PriceLevels& levels, Qty qty) {
-        if (levels.empty()) {
-            return std::nullopt;
-        }
-
+        if (levels.empty()) return std::nullopt;
         auto level_it = levels.begin();
-        auto& level_orders = level_it->second;
-        if (level_orders.empty()) {
-            return std::nullopt;
-        }
+        auto& level = level_it->second;
+        if (level.orders.empty()) return std::nullopt;
 
-        Order& maker = level_orders.front();
+        Order& maker = level.orders.front();
         const Qty traded{std::min(qty.value, maker.qty.value)};
         maker.qty.value -= traded.value;
+        level.aggregate_qty.value -= traded.value;
 
         const FillResult result{maker.id, maker.price, traded};
-
         if (maker.qty.value == 0) {
             order_index.erase(maker.id);
-            level_orders.pop_front();
-            if (level_orders.empty()) {
-                levels.erase(level_it);
-            }
+            level.orders.pop_front();
+            if (level.orders.empty()) levels.erase(level_it);
         }
-
         return result;
-    }
-
-    [[nodiscard]] static bool prices_equal(const std::optional<Price>& lhs, const std::optional<Price>& rhs) {
-        return lhs == rhs;
     }
 
     void maybe_emit_top_of_book_change(std::vector<Event>& events, const std::optional<Price>& previous_best_bid,
                                        const std::optional<Price>& previous_best_ask) {
         const std::optional<Price> current_best_bid = best_bid();
         const std::optional<Price> current_best_ask = best_ask();
-
-        if (!prices_equal(previous_best_bid, current_best_bid) || !prices_equal(previous_best_ask, current_best_ask)) {
+        if (previous_best_bid != current_best_bid || previous_best_ask != current_best_ask) {
             events.emplace_back(TopOfBook{current_best_bid, current_best_ask});
         }
     }
 
-    std::map<Price, std::deque<Order>, std::greater<Price>> bids;
-    std::map<Price, std::deque<Order>> asks;
+    std::map<Price, Level, std::greater<Price>> bids;
+    std::map<Price, Level> asks;
     std::unordered_map<OrderId, std::pair<Side, Price>> order_index;
 };
 

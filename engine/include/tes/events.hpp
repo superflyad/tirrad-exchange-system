@@ -12,6 +12,9 @@ enum class RejectReason {
     InvalidQuantity,
     UnknownOrderId,
     NoLiquidity,
+    InsufficientCash,
+    InsufficientPosition,
+    WrongAccount,
 };
 
 struct OrderAccepted {

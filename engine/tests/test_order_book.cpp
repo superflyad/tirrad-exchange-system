@@ -132,3 +132,26 @@ TEST_CASE("canceling last order removes price level") {
     CHECK(book.level_size(tes::Side::Ask, tes::Price{105}) == 0);
     CHECK_FALSE(book.best_ask().has_value());
 }
+
+TEST_CASE("depth aggregate updates after partial fill") {
+    tes::OrderBook book;
+    (void)book.add_limit_order(tes::Order{1, tes::Side::Ask, tes::Price{100}, tes::Qty{7}});
+    (void)book.fill_best(tes::Side::Ask, tes::Qty{3});
+
+    const tes::OrderBook::Depth d = book.depth(1);
+    REQUIRE(d.asks.size() == 1);
+    CHECK(d.asks[0].price.ticks == 100);
+    CHECK(d.asks[0].qty.value == 4);
+}
+
+TEST_CASE("depth aggregate updates after cancel") {
+    tes::OrderBook book;
+    (void)book.add_limit_order(tes::Order{1, tes::Side::Bid, tes::Price{99}, tes::Qty{2}});
+    (void)book.add_limit_order(tes::Order{2, tes::Side::Bid, tes::Price{99}, tes::Qty{3}});
+
+    (void)book.cancel(1);
+    const tes::OrderBook::Depth d = book.depth(1);
+    REQUIRE(d.bids.size() == 1);
+    CHECK(d.bids[0].price.ticks == 99);
+    CHECK(d.bids[0].qty.value == 3);
+}

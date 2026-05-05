@@ -21,6 +21,15 @@ target_include_directories(tes_engine
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+add_executable(tes_engine_bench
+    benchmarks/engine_bench.cpp
+)
+
+target_link_libraries(tes_engine_bench
+    PRIVATE
+        tes_engine
+)
+
 add_executable(tes_engine_tests
     tests/test_version.cpp
     tests/test_types_and_events.cpp

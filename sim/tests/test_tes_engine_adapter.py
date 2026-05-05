@@ -340,3 +340,27 @@ def test_adapter_passes_default_symbol_explicitly_to_limit_and_market_calls() ->
         ("limit", "Bid", 100, 1, "GTC", "DEFAULT"),
         ("market", "Ask", 2, "DEFAULT"),
     ]
+
+
+def test_snapshot_default_and_symbol_specific_views() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    engine.place_limit_order("Bid", 100, 2, "GTC", "AAA")
+    engine.place_limit_order("Ask", 101, 3, "GTC", "AAA")
+    engine.place_limit_order("Ask", 99, 1, "GTC", "BBB")
+
+    default_snapshot = engine.snapshot(5)
+    assert default_snapshot["symbol"] == "DEFAULT"
+    assert default_snapshot["bids"] == []
+    assert default_snapshot["asks"] == []
+
+    aaa_snapshot = engine.snapshot(5, "AAA")
+    assert aaa_snapshot["symbol"] == "AAA"
+    assert aaa_snapshot["sequence_number"] == 2
+    assert aaa_snapshot["bids"][0]["price"] == 100
+    assert aaa_snapshot["asks"][0]["price"] == 101
+
+    bbb_snapshot = engine.snapshot(5, "BBB")
+    assert len(bbb_snapshot["asks"]) == 1
+    assert bbb_snapshot["asks"][0]["symbol"] == "BBB"

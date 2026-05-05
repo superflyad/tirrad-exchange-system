@@ -854,6 +854,58 @@ TEST_CASE("symbol-aware books isolate resting and crossing orders") {
     CHECK(engine.depth("BBB", 1).asks.empty());
 }
 
+TEST_CASE("snapshot empty and symbol isolated with level ordering and limits") {
+    tes::MatchingEngine engine;
+    const tes::BookSnapshot empty = engine.snapshot("AAA", 5);
+    CHECK(empty.symbol == "AAA");
+    CHECK(empty.sequence_number == 0);
+    CHECK(empty.bids.empty());
+    CHECK(empty.asks.empty());
+
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{3});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{105}, tes::Qty{4});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{103}, tes::Qty{2});
+    (void)engine.place_limit_order(0, "BBB", tes::Side::Ask, tes::Price{99}, tes::Qty{9});
+
+    const tes::BookSnapshot limited = engine.snapshot("AAA", 1);
+    REQUIRE(limited.bids.size() == 1);
+    REQUIRE(limited.asks.size() == 1);
+    CHECK(limited.bids[0].price.ticks == 101);
+    CHECK(limited.bids[0].qty.value == 4);
+    CHECK(limited.asks[0].price.ticks == 103);
+    CHECK(limited.asks[0].qty.value == 2);
+    CHECK(engine.snapshot("BBB", 5).bids.empty());
+    CHECK(engine.snapshot("BBB", 5).asks[0].qty.value == 9);
+}
+
+TEST_CASE("sequence number increments on book-changing events only") {
+    tes::MatchingEngine engine;
+    CHECK(engine.sequence_number("AAA") == 0);
+
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{5});
+    CHECK(engine.sequence_number("AAA") == 1);
+
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{2});
+    CHECK(engine.sequence_number("AAA") == 2);
+
+    const auto accepted = engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{105}, tes::Qty{3});
+    const auto accepted_id = std::get<tes::OrderAccepted>(accepted.front()).id;
+    CHECK(engine.sequence_number("AAA") == 3);
+
+    (void)engine.cancel(0, accepted_id);
+    CHECK(engine.sequence_number("AAA") == 4);
+
+    const auto replace_add = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{90}, tes::Qty{1});
+    const auto replace_id = std::get<tes::OrderAccepted>(replace_add.front()).id;
+    (void)engine.replace_order(0, replace_id, tes::Price{91}, tes::Qty{1});
+    CHECK(engine.sequence_number("AAA") == 7);
+
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{-1}, tes::Qty{1});
+    CHECK(engine.sequence_number("AAA") == 7);
+}
+
 TEST_CASE("symbol-aware market ioc and fok route only to target symbol") {
     tes::MatchingEngine engine;
     (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{3});

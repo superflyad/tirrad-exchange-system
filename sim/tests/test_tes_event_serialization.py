@@ -63,3 +63,12 @@ def test_serialized_event_shape_is_exact() -> None:
     result = serialize_event(event)
 
     assert set(result.keys()) == {"type", "data"}
+
+
+def test_serialize_event_includes_non_default_symbol() -> None:
+    event = TradeExecuted(type="TradeExecuted", data=TradeExecutedData(price=100, qty=5, maker_order_id=1, taker_order_id=2, symbol="AAA"))
+
+    assert serialize_event(event) == {
+        "type": "TradeExecuted",
+        "data": {"price": 100, "qty": 5, "maker_order_id": 1, "taker_order_id": 2, "symbol": "AAA"},
+    }

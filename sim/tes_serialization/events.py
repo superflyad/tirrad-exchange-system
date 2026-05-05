@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from sim.tes_models.events import TesEngineEvent
+from sim.tes_models.events import DEFAULT_SYMBOL, TesEngineEvent
 
 
 def _event_to_dict(event: TesEngineEvent) -> dict[str, object]:
+    data = asdict(event.data)
+    if data.get("symbol") == DEFAULT_SYMBOL:
+        data.pop("symbol")
     return {
         "type": event.type,
-        "data": asdict(event.data),
+        "data": data,
     }
 
 

@@ -838,3 +838,83 @@ TEST_CASE("replace can execute immediately when crossing") {
     CHECK_FALSE(engine.book().best_bid().has_value());
     CHECK_FALSE(engine.book().best_ask().has_value());
 }
+
+TEST_CASE("symbol-aware books isolate resting and crossing orders") {
+    tes::MatchingEngine engine;
+
+    const auto ask_a = engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    const auto bid_b = engine.place_limit_order(0, "BBB", tes::Side::Bid, tes::Price{100}, tes::Qty{5});
+
+    CHECK(find_order_accepted(ask_a)->symbol == "AAA");
+    CHECK(find_order_accepted(bid_b)->symbol == "BBB");
+    CHECK(collect_trades(bid_b).empty());
+    REQUIRE(engine.depth("AAA", 1).asks.size() == 1);
+    REQUIRE(engine.depth("BBB", 1).bids.size() == 1);
+    CHECK(engine.depth("AAA", 1).bids.empty());
+    CHECK(engine.depth("BBB", 1).asks.empty());
+}
+
+TEST_CASE("symbol-aware market ioc and fok route only to target symbol") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{3});
+    (void)engine.place_limit_order(0, "BBB", tes::Side::Ask, tes::Price{99}, tes::Qty{3});
+
+    const auto fok_fail = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{99}, tes::Qty{1}, tes::TimeInForce::Fok);
+    REQUIRE(fok_fail.size() == 1);
+    CHECK(std::holds_alternative<tes::OrderExpired>(fok_fail.front()));
+    CHECK(engine.depth("AAA", 1).asks.front().qty.value == 3);
+
+    const auto ioc = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{5}, tes::TimeInForce::Ioc);
+    const auto ioc_trades = collect_trades(ioc);
+    REQUIRE(ioc_trades.size() == 1);
+    CHECK(ioc_trades.front().symbol == "AAA");
+    CHECK(ioc_trades.front().qty.value == 3);
+    CHECK(engine.depth("BBB", 1).asks.front().qty.value == 3);
+
+    const auto market = engine.place_market_order(0, "BBB", tes::Side::Bid, tes::Qty{2});
+    const auto market_trades = collect_trades(market);
+    REQUIRE(market_trades.size() == 1);
+    CHECK(market_trades.front().symbol == "BBB");
+    CHECK(market_trades.front().price.ticks == 99);
+}
+
+TEST_CASE("account positions and sell risk are symbol-specific while cash is global") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 1'000, 5);
+    engine.set_account_state(1, "BBB", 1'000, 0);
+    engine.set_account_state(2, "AAA", 1'000, 0);
+
+    const auto sell_bbb = engine.place_limit_order(1, "BBB", tes::Side::Ask, tes::Price{10}, tes::Qty{1});
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(sell_bbb.front()));
+    CHECK(std::get<tes::OrderRejected>(sell_bbb.front()).reason == tes::RejectReason::InsufficientPosition);
+
+    (void)engine.place_limit_order(1, "AAA", tes::Side::Ask, tes::Price{10}, tes::Qty{2});
+    (void)engine.place_limit_order(2, "AAA", tes::Side::Bid, tes::Price{10}, tes::Qty{2});
+
+    const auto seller = engine.account_snapshot(1);
+    const auto buyer = engine.account_snapshot(2);
+    CHECK(seller.cash_balance == 1'020);
+    CHECK(seller.position_qty_by_symbol.at("AAA") == 3);
+    CHECK(seller.position_qty_by_symbol.at("BBB") == 0);
+    CHECK(buyer.cash_balance == 980);
+    CHECK(buyer.position_qty_by_symbol.at("AAA") == 2);
+}
+
+TEST_CASE("cancel routes by stored symbol and replace preserves symbol") {
+    tes::MatchingEngine engine;
+    const auto accepted = std::get<tes::OrderAccepted>(
+        engine.place_limit_order(0, "ALT", tes::Side::Bid, tes::Price{100}, tes::Qty{4}).front());
+
+    const auto replaced_events = engine.replace_order(0, accepted.id, tes::Price{101}, tes::Qty{4});
+    const auto replaced = find_order_accepted(replaced_events);
+    REQUIRE(replaced.has_value());
+    CHECK(replaced->id == accepted.id);
+    CHECK(replaced->symbol == "ALT");
+    REQUIRE(engine.depth("ALT", 1).bids.size() == 1);
+    CHECK(engine.depth(1).bids.empty());
+
+    const auto canceled = engine.cancel(0, accepted.id);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(canceled.front()));
+    CHECK(std::get<tes::OrderCanceled>(canceled.front()).symbol == "ALT");
+    CHECK(engine.depth("ALT", 1).bids.empty());
+}

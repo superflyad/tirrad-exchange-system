@@ -295,3 +295,22 @@ def test_replace_unknown_order_produces_cancel_rejected() -> None:
 
     rejected = next(event for event in events if event.type == "CancelRejected")
     assert rejected.data.reason == "UnknownOrderId"
+
+
+def test_symbol_aware_orders_depth_and_events_are_isolated() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    accepted = execute_command(engine, LimitOrderCommand(side="SELL", price=100, qty=3, symbol="AAA"))
+    execute_command(engine, LimitOrderCommand(side="BUY", price=100, qty=3, symbol="BBB"))
+
+    assert any(event.type == "OrderAccepted" and event.data.symbol == "AAA" for event in accepted)
+    assert len(engine.depth(5, "AAA")["asks"]) == 1
+    assert len(engine.depth(5, "BBB")["bids"]) == 1
+    assert engine.depth(5, "AAA")["bids"] == []
+    assert engine.depth(5, "BBB")["asks"] == []
+
+    trades = execute_command(engine, MarketOrderCommand(side="BUY", qty=2, symbol="AAA"))
+
+    assert any(event.type == "TradeExecuted" and event.data.symbol == "AAA" for event in trades)
+    assert len(engine.depth(5, "BBB")["bids"]) == 1

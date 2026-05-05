@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
+DEFAULT_SYMBOL = "DEFAULT"
+
 
 @dataclass(frozen=True)
 class LimitOrderCommand:
@@ -10,12 +12,14 @@ class LimitOrderCommand:
     price: int
     qty: int
     time_in_force: Literal["GTC", "IOC", "FOK"] = "GTC"
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
 class MarketOrderCommand:
     side: Literal["BUY", "SELL"]
     qty: int
+    symbol: str = DEFAULT_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,19 @@ def _require_time_in_force(value: Any) -> Literal["GTC", "IOC", "FOK"]:
     return value
 
 
+def _require_symbol(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("symbol must be a string")
+    return value
+
+
+def _require_command_keys(value: dict[str, Any], expected: set[str], name: str) -> None:
+    keys = set(value.keys())
+    with_symbol = expected | {"symbol"}
+    if keys != expected and keys != with_symbol:
+        raise ValueError(f"{name} keys must be exactly {sorted(expected)} or {sorted(with_symbol)}, got {sorted(keys)}")
+
+
 def parse_command(raw: dict[str, Any]) -> TesCommand:
     command = _require_dict(raw, "command")
     _require_exact_keys(command, {"type", "data"}, "command")
@@ -81,19 +98,21 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
     data = _require_dict(command["data"], "command.data")
 
     if command_type == "LimitOrder":
-        _require_exact_keys(data, {"side", "price", "qty", "time_in_force"}, "LimitOrder.data")
+        _require_command_keys(data, {"side", "price", "qty", "time_in_force"}, "LimitOrder.data")
         return LimitOrderCommand(
             side=_require_side(data["side"]),
             price=_require_positive_int(data["price"], "price"),
             qty=_require_positive_int(data["qty"], "qty"),
             time_in_force=_require_time_in_force(data["time_in_force"]),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
         )
 
     if command_type == "MarketOrder":
-        _require_exact_keys(data, {"side", "qty"}, "MarketOrder.data")
+        _require_command_keys(data, {"side", "qty"}, "MarketOrder.data")
         return MarketOrderCommand(
             side=_require_side(data["side"]),
             qty=_require_positive_int(data["qty"], "qty"),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
         )
 
     if command_type == "CancelOrder":

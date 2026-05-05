@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from random import Random
+from typing import Any, Callable
 
 import tes_engine
 from sim.session.models import MarketSessionConfig, MarketSessionReport, MarketSessionResult
@@ -16,7 +17,7 @@ from sim.tes_engine_adapter import execute_command
 class MarketSessionRunner:
     config: MarketSessionConfig
 
-    def run(self) -> MarketSessionResult:
+    def run(self, *, progress_interval: int = 10, progress_callback: Callable[[dict[str, Any]], None] | None = None, verbose: bool = False) -> MarketSessionResult:
         scenario = get_market_scenario(self.config.scenario)
         rng = Random(self.config.seed)
         engine = tes_engine.MatchingEngine()
@@ -32,6 +33,7 @@ class MarketSessionRunner:
         rejected = 0
         total_orders = 0
 
+        latest_mid: dict[str, float] = {s: 0.0 for s in self.config.symbols}
         for step in range(self.config.steps):
             for symbol in self.config.symbols:
                 drift = 1 if self.config.scenario == "trending_up" else -1 if self.config.scenario == "trending_down" else 0
@@ -68,7 +70,17 @@ class MarketSessionRunner:
                         trades.append({"step": step, "symbol": symbol, "price": event.data.price, "qty": event.data.qty, "maker_order_id": event.data.maker_order_id, "taker_order_id": event.data.taker_order_id})
                     if event.type == "OrderRejected":
                         rejected += 1
-                steps.append({"step": step, "symbol": symbol, "events": len(step_events), "trades": step_trade_count, "volume": step_trade_volume, "mid": (best_bid + best_ask) / 2 if best_bid and best_ask else 0})
+                mid = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
+                latest_mid[symbol] = mid
+                steps.append({"step": step, "symbol": symbol, "events": len(step_events), "trades": step_trade_count, "volume": step_trade_volume, "mid": mid})
+
+            if progress_callback is not None:
+                one_index_step = step + 1
+                if one_index_step == 1 or one_index_step == self.config.steps or one_index_step % max(1, progress_interval) == 0:
+                    detail = None
+                    if verbose:
+                        detail = [item for item in steps if item["step"] == step]
+                    progress_callback({"step": one_index_step, "total_steps": self.config.steps, "symbols": self.config.symbols, "total_orders": total_orders, "total_trades": len(trades), "latest_mid": dict(latest_mid), "rejected_orders": rejected, "detail": detail})
 
         report = MarketSessionReport(
             total_steps=self.config.steps,

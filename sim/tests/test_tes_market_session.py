@@ -74,3 +74,37 @@ def test_cli_session_smoke(tmp_path: Path) -> None:
         str(tmp_path / "run.json"),
     ])
     assert code == 0
+
+
+def test_cli_emits_progress(capsys: object) -> None:
+    code = main(["sim", "session", "--scenario", "calm_market", "--steps", "12", "--seed", "42", "--progress-interval", "5"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "[session] start" in out
+    assert "step 5/12" in out
+    assert "step 10/12" in out
+
+
+def test_cli_quiet_suppresses_progress(capsys: object) -> None:
+    code = main(["sim", "session", "--scenario", "calm_market", "--steps", "10", "--seed", "42", "--quiet"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "[session] start" not in out
+    assert "step 10/10" not in out
+    assert "[session] complete" in out
+
+
+def test_cli_verbose_includes_step_detail(capsys: object) -> None:
+    code = main(["sim", "session", "--scenario", "calm_market", "--steps", "5", "--seed", "42", "--verbose", "--progress-interval", "5"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "[session][detail]" in out
+
+
+def test_progress_interval_respected(capsys: object) -> None:
+    code = main(["sim", "session", "--scenario", "calm_market", "--steps", "21", "--seed", "42", "--progress-interval", "10"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "step 10/21" in out
+    assert "step 20/21" in out
+    assert "step 11/21" not in out

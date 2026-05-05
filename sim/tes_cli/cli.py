@@ -62,6 +62,9 @@ def _build_parser() -> argparse.ArgumentParser:
     session_parser.add_argument("--participants", type=int, default=20)
     session_parser.add_argument("--output-json", type=Path, default=None)
     session_parser.add_argument("--depth-levels", type=int, default=5)
+    session_parser.add_argument("--progress-interval", type=int, default=10)
+    session_parser.add_argument("--quiet", action="store_true")
+    session_parser.add_argument("--verbose", action="store_true")
     session_parser.set_defaults(handler=_handle_session)
 
     list_strategies_parser = sim_subparsers.add_parser(

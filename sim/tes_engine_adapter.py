@@ -8,6 +8,8 @@ from sim.tes_models.commands import (
     LimitOrderCommand,
     MarketOrderCommand,
     ReplaceOrderCommand,
+    StopLimitOrderCommand,
+    StopOrderCommand,
     TesCommand,
 )
 
@@ -22,6 +24,16 @@ def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
     if isinstance(command, MarketOrderCommand):
         side = "Bid" if command.side == "BUY" else "Ask"
         return parse_events(engine.place_market_order(side, command.qty, command.symbol))
+
+    if isinstance(command, StopOrderCommand):
+        side = "Bid" if command.side == "BUY" else "Ask"
+        return parse_events(engine.place_stop_order(side, command.stop_price, command.qty, command.symbol))
+
+    if isinstance(command, StopLimitOrderCommand):
+        side = "Bid" if command.side == "BUY" else "Ask"
+        return parse_events(
+            engine.place_stop_limit_order(side, command.stop_price, command.limit_price, command.qty, command.symbol)
+        )
 
     if isinstance(command, CancelOrderCommand):
         return parse_events(engine.cancel(command.order_id))

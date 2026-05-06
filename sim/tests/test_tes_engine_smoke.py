@@ -54,3 +54,19 @@ def test_cancel_returns_order_canceled_for_accepted_order() -> None:
     cancel_raw = engine.cancel(order_id=accepted.data.order_id)
     cancel_events = parse_events(cancel_raw)
     assert any(event.type == "OrderCanceled" for event in cancel_events)
+
+
+def test_python_stop_order_smoke() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    engine.place_limit_order("Bid", 99, 10, symbol="AAA")
+    engine.place_limit_order("Ask", 101, 10, symbol="AAA")
+
+    accepted = engine.place_stop_order("Bid", 101, 2, symbol="AAA")
+    assert accepted[0]["type"] == "StopOrderAccepted"
+    assert accepted[0]["data"]["symbol"] == "AAA"
+
+    events = engine.place_limit_order("Bid", 101, 3, symbol="AAA")
+    assert any(event["type"] == "StopOrderTriggered" for event in events)
+    assert any(event["type"] == "TradeExecuted" for event in events)

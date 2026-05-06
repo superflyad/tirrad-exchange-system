@@ -111,6 +111,23 @@ namespace tes {
                 return stream.str();
             }
 
+            else if constexpr (std::is_same_v<T, StopOrderAccepted>) {
+                stream << "StopOrderAccepted{id=" << value.id << ", side=" << to_string(value.side)
+                       << ", stop_price=" << to_string(value.stop_price) << ", qty=" << to_string(value.qty);
+                if (value.limit_price.has_value()) stream << ", limit_price=" << to_string(*value.limit_price);
+                stream << "}";
+                return stream.str();
+            }
+
+            else if constexpr (std::is_same_v<T, StopOrderTriggered>) {
+                stream << "StopOrderTriggered{id=" << value.id << ", resulting_order_id=" << value.resulting_order_id
+                       << ", side=" << to_string(value.side) << ", stop_price=" << to_string(value.stop_price)
+                       << ", qty=" << to_string(value.qty);
+                if (value.limit_price.has_value()) stream << ", limit_price=" << to_string(*value.limit_price);
+                stream << "}";
+                return stream.str();
+            }
+
             else if constexpr (std::is_same_v<T, TopOfBook>) {
                 stream << "TopOfBook{best_bid=";
                 if (value.best_bid.has_value()) {

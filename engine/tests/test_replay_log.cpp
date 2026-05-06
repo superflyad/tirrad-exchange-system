@@ -49,6 +49,13 @@ bool events_equal(const tes::Event& left, const tes::Event& right) {
                        lhs.symbol == rhs.symbol;
             } else if constexpr (std::is_same_v<L, tes::OrderExpired>) {
                 return lhs.id == rhs.id && lhs.symbol == rhs.symbol;
+            } else if constexpr (std::is_same_v<L, tes::StopOrderAccepted>) {
+                return lhs.id == rhs.id && lhs.side == rhs.side && lhs.stop_price.ticks == rhs.stop_price.ticks &&
+                       lhs.qty.value == rhs.qty.value && lhs.limit_price == rhs.limit_price && lhs.symbol == rhs.symbol;
+            } else if constexpr (std::is_same_v<L, tes::StopOrderTriggered>) {
+                return lhs.id == rhs.id && lhs.resulting_order_id == rhs.resulting_order_id && lhs.side == rhs.side &&
+                       lhs.stop_price.ticks == rhs.stop_price.ticks && lhs.qty.value == rhs.qty.value &&
+                       lhs.limit_price == rhs.limit_price && lhs.symbol == rhs.symbol;
             } else {
                 return lhs.best_bid == rhs.best_bid && lhs.best_ask == rhs.best_ask && lhs.symbol == rhs.symbol;
             }

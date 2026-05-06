@@ -13,7 +13,7 @@ using Symbol = std::string;
 inline constexpr const char* kDefaultSymbol = "DEFAULT";
 
 enum class Side { Bid, Ask };
-enum class OrderType { Limit, Market };
+enum class OrderType { Limit, Market, StopMarket, StopLimit };
 enum class TimeInForce { Gtc, Ioc, Fok };
 
 struct Price {

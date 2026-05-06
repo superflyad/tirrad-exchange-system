@@ -132,6 +132,31 @@ namespace {
                 data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::StopOrderAccepted>) {
+                py::dict out;
+                out["type"] = "StopOrderAccepted";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["side"] = side_to_string(evt.side);
+                data["stop_price"] = evt.stop_price.ticks;
+                data["qty"] = evt.qty.value;
+                data["limit_price"] = evt.limit_price.has_value() ? py::cast(evt.limit_price->ticks) : py::none();
+                data["symbol"] = evt.symbol;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::StopOrderTriggered>) {
+                py::dict out;
+                out["type"] = "StopOrderTriggered";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["resulting_order_id"] = evt.resulting_order_id;
+                data["side"] = side_to_string(evt.side);
+                data["stop_price"] = evt.stop_price.ticks;
+                data["qty"] = evt.qty.value;
+                data["limit_price"] = evt.limit_price.has_value() ? py::cast(evt.limit_price->ticks) : py::none();
+                data["symbol"] = evt.symbol;
+                out["data"] = data;
+                return out;
             } else {
                 py::dict out;
                 out["type"] = "TopOfBook";
@@ -337,6 +362,8 @@ PYBIND11_MODULE(tes_engine, m) {
     py::enum_<tes::OrderType>(m, "OrderType")
         .value("LIMIT", tes::OrderType::Limit)
         .value("MARKET", tes::OrderType::Market)
+        .value("STOP_MARKET", tes::OrderType::StopMarket)
+        .value("STOP_LIMIT", tes::OrderType::StopLimit)
         .export_values();
 
     py::enum_<tes::TimeInForce>(m, "TimeInForce")
@@ -448,6 +475,26 @@ PYBIND11_MODULE(tes_engine, m) {
                  return events_to_dicts(events);
              },
              py::arg("side"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
+        .def("place_stop_order",
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t stop_price_ticks, std::int64_t qty,
+                const std::string& symbol, std::uint64_t account_id) {
+                 const tes::Side parsed_side = side_from_string(side);
+                 const std::vector<tes::Event> events =
+                     self.place_stop_order(account_id, symbol, parsed_side, tes::Price{stop_price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("side"), py::arg("stop_price_ticks"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol,
+             py::arg("account_id") = 0)
+        .def("place_stop_limit_order",
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t stop_price_ticks, std::int64_t limit_price_ticks,
+                std::int64_t qty, const std::string& symbol, std::uint64_t account_id) {
+                 const tes::Side parsed_side = side_from_string(side);
+                 const std::vector<tes::Event> events = self.place_stop_limit_order(
+                     account_id, symbol, parsed_side, tes::Price{stop_price_ticks}, tes::Price{limit_price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("side"), py::arg("stop_price_ticks"), py::arg("limit_price_ticks"), py::arg("qty"),
+             py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
         .def("cancel",
              [](tes::MatchingEngine& self, std::uint64_t order_id) {
                  const std::vector<tes::Event> events = self.cancel(order_id);
@@ -461,6 +508,23 @@ PYBIND11_MODULE(tes_engine, m) {
                  return events_to_dicts(events);
              },
              py::arg("order_id"), py::arg("price_ticks"), py::arg("qty"))
+        .def("replace_stop_order",
+             [](tes::MatchingEngine& self, std::uint64_t order_id, std::int64_t stop_price_ticks, std::int64_t qty,
+                std::uint64_t account_id) {
+                 const std::vector<tes::Event> events =
+                     self.replace_stop_order(account_id, order_id, tes::Price{stop_price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("order_id"), py::arg("stop_price_ticks"), py::arg("qty"), py::arg("account_id") = 0)
+        .def("replace_stop_limit_order",
+             [](tes::MatchingEngine& self, std::uint64_t order_id, std::int64_t stop_price_ticks,
+                std::int64_t limit_price_ticks, std::int64_t qty, std::uint64_t account_id) {
+                 const std::vector<tes::Event> events = self.replace_stop_limit_order(
+                     account_id, order_id, tes::Price{stop_price_ticks}, tes::Price{limit_price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("order_id"), py::arg("stop_price_ticks"), py::arg("limit_price_ticks"), py::arg("qty"),
+             py::arg("account_id") = 0)
         .def("depth",
              [](const tes::MatchingEngine& self, std::size_t levels, const std::string& symbol) {
                  return depth_to_py(self.depth(symbol, levels));

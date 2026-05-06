@@ -49,6 +49,7 @@ class MarketSessionResult:
     config: MarketSessionConfig
     step_summaries: list[dict[str, object]]
     trades: list[dict[str, object]]
+    events: list[dict[str, object]]
     snapshots: list[dict[str, object]]
     report: MarketSessionReport
     per_symbol_analytics: dict[str, dict[str, object]]
@@ -58,6 +59,7 @@ class MarketSessionResult:
             "config": asdict(self.config),
             "steps": self.step_summaries,
             "trades": self.trades,
+            "events": self.events,
             "snapshots": self.snapshots,
             "report": asdict(self.report),
             "per_symbol_analytics": self.per_symbol_analytics,

@@ -90,6 +90,7 @@ Usage:
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
   ./${SCRIPT_NAME} sim <command>
+  ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload]
   ./${SCRIPT_NAME} bench [preset]
 USAGE
 }
@@ -106,7 +107,9 @@ run_bench() {
   "${exe}"
 }
 
-run_sim_cli() {
+run_python_module() {
+  local module="$1"
+  shift
   local pybin
   pybin="$(command -v python3 || command -v python)"
   if [[ -z "${pybin}" ]]; then
@@ -134,7 +137,15 @@ run_sim_cli() {
     export PYTHONPATH="${module_path}:${PYTHONPATH}"
   fi
 
-  "${pybin}" -m sim.tes_cli.cli "$@"
+  "${pybin}" -m "${module}" "$@"
+}
+
+run_sim_cli() {
+  run_python_module sim.tes_cli.cli "$@"
+}
+
+run_api_cli() {
+  run_python_module sim.api.main "$@"
 }
 
 cmd="${1:-}"
@@ -171,6 +182,10 @@ case "$cmd" in
     ;;
   sim)
     run_sim_cli "$@"
+    ;;
+  api)
+    shift
+    run_api_cli "$@"
     ;;
   bench)
     run_bench "${2:-}"

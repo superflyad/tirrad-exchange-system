@@ -12,6 +12,7 @@ from sim.session.participants import MarketParticipant
 from sim.session.scenarios import get_market_scenario
 from sim.tes_engine_adapter import execute_command
 from sim.tes_models import parse_events
+from sim.tes_serialization.events import serialize_events
 
 
 @dataclass
@@ -27,6 +28,7 @@ class MarketSessionRunner:
         initial_price = dict(last_price)
         steps: list[dict[str, object]] = []
         trades: list[dict[str, object]] = []
+        serialized_events: list[dict[str, object]] = []
         snapshots: list[dict[str, object]] = []
         spreads: dict[str, list[int]] = {s: [] for s in self.config.symbols}
         imbalance: dict[str, list[float]] = {s: [] for s in self.config.symbols}
@@ -91,6 +93,7 @@ class MarketSessionRunner:
 
                 step_trade_count = 0
                 step_trade_volume = 0
+                serialized_events.extend(serialize_events(step_events))
                 for event in step_events:
                     if event.type == "TradeExecuted":
                         step_trade_count += 1
@@ -144,7 +147,7 @@ class MarketSessionRunner:
             halted_symbols=tuple(sorted(halted_symbols)),
         )
         analytics = {s: {"volume": per_symbol_volume[s], "final_price": last_price[s]} for s in self.config.symbols}
-        return MarketSessionResult(self.config, steps, trades, snapshots, report, analytics)
+        return MarketSessionResult(self.config, steps, trades, serialized_events, snapshots, report, analytics)
 
     def save_json(self, result: MarketSessionResult, output_path: Path) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)

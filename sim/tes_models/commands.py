@@ -16,6 +16,23 @@ class LimitOrderCommand:
 
 
 @dataclass(frozen=True)
+class HiddenOrderCommand:
+    side: Literal["BUY", "SELL"]
+    price: int
+    qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
+class IcebergOrderCommand:
+    side: Literal["BUY", "SELL"]
+    price: int
+    total_qty: int
+    display_qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
 class MarketOrderCommand:
     side: Literal["BUY", "SELL"]
     qty: int
@@ -64,6 +81,8 @@ class UncrossAuctionCommand:
 
 TesCommand: TypeAlias = (
     LimitOrderCommand
+    | HiddenOrderCommand
+    | IcebergOrderCommand
     | MarketOrderCommand
     | StopOrderCommand
     | StopLimitOrderCommand
@@ -147,6 +166,29 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
             price=_require_positive_int(data["price"], "price"),
             qty=_require_positive_int(data["qty"], "qty"),
             time_in_force=_require_time_in_force(data["time_in_force"]),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
+        )
+
+    if command_type == "HiddenOrder":
+        _require_command_keys(data, {"side", "price", "qty"}, "HiddenOrder.data")
+        return HiddenOrderCommand(
+            side=_require_side(data["side"]),
+            price=_require_positive_int(data["price"], "price"),
+            qty=_require_positive_int(data["qty"], "qty"),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
+        )
+
+    if command_type == "IcebergOrder":
+        _require_command_keys(data, {"side", "price", "total_qty", "display_qty"}, "IcebergOrder.data")
+        total_qty = _require_positive_int(data["total_qty"], "total_qty")
+        display_qty = _require_positive_int(data["display_qty"], "display_qty")
+        if display_qty > total_qty:
+            raise ValueError("display_qty must be less than or equal to total_qty")
+        return IcebergOrderCommand(
+            side=_require_side(data["side"]),
+            price=_require_positive_int(data["price"], "price"),
+            total_qty=total_qty,
+            display_qty=display_qty,
             symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
         )
 

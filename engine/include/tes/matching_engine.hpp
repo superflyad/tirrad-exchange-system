@@ -108,6 +108,12 @@ class MatchingEngine {
     [[nodiscard]] std::vector<Event> place_limit_order(Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
     [[nodiscard]] std::vector<Event> place_limit_order(AccountId account_id, Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
     [[nodiscard]] std::vector<Event> place_limit_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
+    [[nodiscard]] std::vector<Event> place_hidden_order(Side side, Price price, Qty qty);
+    [[nodiscard]] std::vector<Event> place_hidden_order(AccountId account_id, Side side, Price price, Qty qty);
+    [[nodiscard]] std::vector<Event> place_hidden_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty);
+    [[nodiscard]] std::vector<Event> place_iceberg_order(Side side, Price price, Qty total_qty, Qty display_qty);
+    [[nodiscard]] std::vector<Event> place_iceberg_order(AccountId account_id, Side side, Price price, Qty total_qty, Qty display_qty);
+    [[nodiscard]] std::vector<Event> place_iceberg_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty total_qty, Qty display_qty);
     [[nodiscard]] std::vector<Event> place_market_order(Side side, Qty qty);
     [[nodiscard]] std::vector<Event> place_market_order(AccountId account_id, Side side, Qty qty);
     [[nodiscard]] std::vector<Event> place_market_order(AccountId account_id, const Symbol& symbol, Side side, Qty qty);
@@ -141,9 +147,10 @@ class MatchingEngine {
     [[nodiscard]] const OrderBook& book() const;
 
   private:
-    struct OrderOwnership { AccountId account_id; Symbol symbol; Side side; Price price; Qty qty; };
+    struct OrderOwnership { AccountId account_id; Symbol symbol; Side side; Price price; Qty qty; OrderVisibility visibility{OrderVisibility::Displayed}; Qty display_qty{0}; };
     struct StopOrderState { AccountId account_id; Symbol symbol; Side side; Price stop_price; Qty qty; std::optional<Price> limit_price; OrderId sequence; };
     [[nodiscard]] std::vector<Event> place_limit_order_with_account_and_id(AccountId account_id, const Symbol& symbol, OrderId taker_id, Side side, Price price, Qty qty, TimeInForce tif);
+    [[nodiscard]] std::vector<Event> place_visible_order_with_account_and_id(AccountId account_id, const Symbol& symbol, OrderId taker_id, Side side, Price price, Qty qty, TimeInForce tif, OrderVisibility visibility, Qty display_qty = Qty{0});
     [[nodiscard]] std::vector<Event> place_market_order_with_account_and_id(AccountId account_id, const Symbol& symbol, OrderId taker_id, Side side, Qty qty);
     [[nodiscard]] std::vector<Event> place_stop_order_with_account_and_id(AccountId account_id, const Symbol& symbol, OrderId stop_id, Side side, Price stop_price, Qty qty, std::optional<Price> limit_price);
     [[nodiscard]] std::vector<Event> evaluate_stop_orders(const Symbol& symbol);
@@ -166,6 +173,7 @@ class MatchingEngine {
     [[nodiscard]] std::int64_t short_margin_reserve(AccountId account_id, const Symbol& symbol, Price price, std::int64_t short_qty) const;
     [[nodiscard]] std::optional<RejectReason> validate_order_risk(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty, std::optional<OrderId> replacing_order_id = std::nullopt) const;
     [[nodiscard]] std::vector<Event> rest_limit_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty);
+    [[nodiscard]] std::vector<Event> rest_visible_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty, OrderVisibility visibility, Qty display_qty = Qty{0});
     struct AuctionIndicative { std::optional<Price> price; Qty qty{0}; std::int64_t imbalance{0}; };
     [[nodiscard]] AuctionIndicative compute_auction_indicative(const Symbol& symbol) const;
     void settle_auction_trade(const Symbol& symbol, OrderId bid_id, OrderId ask_id, Price price, Qty qty, std::vector<Event>& events);

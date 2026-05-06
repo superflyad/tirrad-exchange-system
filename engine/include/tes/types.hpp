@@ -16,6 +16,7 @@ enum class Side { Bid, Ask };
 enum class OrderType { Limit, Market, StopMarket, StopLimit };
 enum class TimeInForce { Gtc, Ioc, Fok };
 enum class TradingPhase { Continuous, OpeningAuction, ClosingAuction, Halted };
+enum class OrderVisibility { Displayed, Hidden, Iceberg };
 
 struct Price {
     std::int64_t ticks;

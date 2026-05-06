@@ -146,3 +146,8 @@ engine.set_account_risk_config(
     },
 )
 ```
+
+
+## Hidden and iceberg liquidity
+
+Displayed, hidden, and iceberg order behavior is specified in [Hidden and Iceberg Orders](hidden_iceberg_orders.md).

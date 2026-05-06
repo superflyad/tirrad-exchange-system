@@ -29,6 +29,38 @@ struct OrderAccepted {
     Symbol symbol{kDefaultSymbol};
 };
 
+struct HiddenOrderAccepted {
+    OrderId id;
+    Side side;
+    Price price;
+    Qty total_qty;
+    Symbol symbol{kDefaultSymbol};
+    [[nodiscard]] bool operator==(const HiddenOrderAccepted&) const = default;
+};
+
+struct IcebergOrderAccepted {
+    OrderId id;
+    Side side;
+    Price price;
+    Qty total_qty;
+    Qty display_qty;
+    Qty reserve_qty;
+    Qty current_visible_qty;
+    Symbol symbol{kDefaultSymbol};
+    [[nodiscard]] bool operator==(const IcebergOrderAccepted&) const = default;
+};
+
+struct IcebergReplenished {
+    OrderId id;
+    Side side;
+    Price price;
+    Qty replenished_qty;
+    Qty reserve_qty;
+    Qty total_remaining_qty;
+    Symbol symbol{kDefaultSymbol};
+    [[nodiscard]] bool operator==(const IcebergReplenished&) const = default;
+};
+
 struct OrderRejected {
     Side side;
     Price price;
@@ -128,7 +160,7 @@ struct IndicativePriceUpdated {
     [[nodiscard]] bool operator==(const IndicativePriceUpdated&) const = default;
 };
 
-using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
+using Event = std::variant<OrderAccepted, HiddenOrderAccepted, IcebergOrderAccepted, IcebergReplenished, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
                            OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook, AuctionStarted,
                            AuctionEnded, AuctionUncross, IndicativePriceUpdated>;
 

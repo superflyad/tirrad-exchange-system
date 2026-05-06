@@ -24,6 +24,21 @@ struct LimitOrderCommand {
     TimeInForce time_in_force{TimeInForce::Gtc};
 };
 
+struct HiddenOrderCommand {
+    Side side;
+    Price price;
+    Qty qty;
+    Symbol symbol{kDefaultSymbol};
+};
+
+struct IcebergOrderCommand {
+    Side side;
+    Price price;
+    Qty total_qty;
+    Qty display_qty;
+    Symbol symbol{kDefaultSymbol};
+};
+
 struct MarketOrderCommand {
     Side side;
     Qty qty;
@@ -43,7 +58,7 @@ struct AuctionUncrossCommand {
     Symbol symbol{kDefaultSymbol};
 };
 
-using ReplayCommand = std::variant<LimitOrderCommand, MarketOrderCommand, CancelOrderCommand, SetTradingPhaseCommand, AuctionUncrossCommand>;
+using ReplayCommand = std::variant<LimitOrderCommand, HiddenOrderCommand, IcebergOrderCommand, MarketOrderCommand, CancelOrderCommand, SetTradingPhaseCommand, AuctionUncrossCommand>;
 
 struct ReplayEntry {
     std::size_t sequence;
@@ -83,6 +98,9 @@ struct ReplayEntry {
         [](const auto& value) -> const char* {
             using T = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<T, OrderAccepted>) return "OrderAccepted";
+            if constexpr (std::is_same_v<T, HiddenOrderAccepted>) return "HiddenOrderAccepted";
+            if constexpr (std::is_same_v<T, IcebergOrderAccepted>) return "IcebergOrderAccepted";
+            if constexpr (std::is_same_v<T, IcebergReplenished>) return "IcebergReplenished";
             if constexpr (std::is_same_v<T, OrderRejected>) return "OrderRejected";
             if constexpr (std::is_same_v<T, OrderCanceled>) return "OrderCanceled";
             if constexpr (std::is_same_v<T, CancelRejected>) return "CancelRejected";
@@ -146,6 +164,17 @@ struct ReplayEntry {
                     << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"price\":"
                     << value.price.ticks << ",\"qty\":" << value.qty.value << ",\"time_in_force\":\""
                     << time_in_force_name(value.time_in_force) << "\",\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
+            } else if constexpr (std::is_same_v<T, HiddenOrderCommand>) {
+                out << "{\"type\":\"HiddenOrderCommand\",\"data\":{\"side\":\""
+                    << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"price\":"
+                    << value.price.ticks << ",\"qty\":" << value.qty.value << ",\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
+            } else if constexpr (std::is_same_v<T, IcebergOrderCommand>) {
+                out << "{\"type\":\"IcebergOrderCommand\",\"data\":{\"side\":\""
+                    << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"price\":"
+                    << value.price.ticks << ",\"total_qty\":" << value.total_qty.value
+                    << ",\"display_qty\":" << value.display_qty.value << ",\"symbol\":\""
                     << json_escape(value.symbol) << "\"}}";
             } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                 out << "{\"type\":\"MarketOrderCommand\",\"data\":{\"side\":\""
@@ -232,6 +261,10 @@ class ReplayLog {
                 if constexpr (std::is_same_v<T, LimitOrderCommand>) {
                     return engine.place_limit_order(0, command.symbol, command.side, command.price, command.qty,
                                                     command.time_in_force);
+                } else if constexpr (std::is_same_v<T, HiddenOrderCommand>) {
+                    return engine.place_hidden_order(0, command.symbol, command.side, command.price, command.qty);
+                } else if constexpr (std::is_same_v<T, IcebergOrderCommand>) {
+                    return engine.place_iceberg_order(0, command.symbol, command.side, command.price, command.total_qty, command.display_qty);
                 } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                     return engine.place_market_order(0, command.symbol, command.side, command.qty);
                 } else if constexpr (std::is_same_v<T, CancelOrderCommand>) {
@@ -248,5 +281,6 @@ class ReplayLog {
 
     return replayed_events;
 }
+
 
 }  // namespace tes

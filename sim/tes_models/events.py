@@ -30,6 +30,40 @@ class OrderAcceptedData:
 
 
 @dataclass(frozen=True)
+class HiddenOrderAcceptedData:
+    order_id: int
+    side: Literal["BUY", "SELL"]
+    price: int
+    total_qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
+class IcebergOrderAcceptedData:
+    order_id: int
+    side: Literal["BUY", "SELL"]
+    price: int
+    total_qty: int
+    display_qty: int
+    reserve_qty: int
+    hidden_remaining: int
+    current_visible_qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
+class IcebergReplenishedData:
+    order_id: int
+    side: Literal["BUY", "SELL"]
+    price: int
+    replenished_qty: int
+    reserve_qty: int
+    hidden_remaining: int
+    total_remaining_qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
 class OrderCanceledData:
     order_id: int
     symbol: str = DEFAULT_SYMBOL
@@ -138,6 +172,24 @@ class OrderAccepted:
 
 
 @dataclass(frozen=True)
+class HiddenOrderAccepted:
+    type: Literal["HiddenOrderAccepted"]
+    data: HiddenOrderAcceptedData
+
+
+@dataclass(frozen=True)
+class IcebergOrderAccepted:
+    type: Literal["IcebergOrderAccepted"]
+    data: IcebergOrderAcceptedData
+
+
+@dataclass(frozen=True)
+class IcebergReplenished:
+    type: Literal["IcebergReplenished"]
+    data: IcebergReplenishedData
+
+
+@dataclass(frozen=True)
 class OrderCanceled:
     type: Literal["OrderCanceled"]
     data: OrderCanceledData
@@ -223,6 +275,9 @@ class IndicativePriceUpdated:
 
 TesEngineEvent: TypeAlias = (
     OrderAccepted
+    | HiddenOrderAccepted
+    | IcebergOrderAccepted
+    | IcebergReplenished
     | OrderRejected
     | OrderCanceled
     | CancelRejected
@@ -334,6 +389,60 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
                 side=_require_side(data["side"]),
                 price=_require_int(data["price"], "price"),
                 qty=_require_int(data["qty"], "qty"),
+                symbol=_optional_symbol(data),
+            ),
+        )
+
+    if event_type == "HiddenOrderAccepted":
+        _require_event_keys(data, {"order_id", "side", "price", "total_qty"}, "HiddenOrderAccepted.data")
+        return HiddenOrderAccepted(
+            type="HiddenOrderAccepted",
+            data=HiddenOrderAcceptedData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                side=_require_side(data["side"]),
+                price=_require_int(data["price"], "price"),
+                total_qty=_require_int(data["total_qty"], "total_qty"),
+                symbol=_optional_symbol(data),
+            ),
+        )
+
+    if event_type == "IcebergOrderAccepted":
+        _require_event_keys(
+            data,
+            {"order_id", "side", "price", "total_qty", "display_qty", "reserve_qty", "hidden_remaining", "current_visible_qty"},
+            "IcebergOrderAccepted.data",
+        )
+        return IcebergOrderAccepted(
+            type="IcebergOrderAccepted",
+            data=IcebergOrderAcceptedData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                side=_require_side(data["side"]),
+                price=_require_int(data["price"], "price"),
+                total_qty=_require_int(data["total_qty"], "total_qty"),
+                display_qty=_require_int(data["display_qty"], "display_qty"),
+                reserve_qty=_require_int(data["reserve_qty"], "reserve_qty"),
+                hidden_remaining=_require_int(data["hidden_remaining"], "hidden_remaining"),
+                current_visible_qty=_require_int(data["current_visible_qty"], "current_visible_qty"),
+                symbol=_optional_symbol(data),
+            ),
+        )
+
+    if event_type == "IcebergReplenished":
+        _require_event_keys(
+            data,
+            {"order_id", "side", "price", "replenished_qty", "reserve_qty", "hidden_remaining", "total_remaining_qty"},
+            "IcebergReplenished.data",
+        )
+        return IcebergReplenished(
+            type="IcebergReplenished",
+            data=IcebergReplenishedData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                side=_require_side(data["side"]),
+                price=_require_int(data["price"], "price"),
+                replenished_qty=_require_int(data["replenished_qty"], "replenished_qty"),
+                reserve_qty=_require_int(data["reserve_qty"], "reserve_qty"),
+                hidden_remaining=_require_int(data["hidden_remaining"], "hidden_remaining"),
+                total_remaining_qty=_require_int(data["total_remaining_qty"], "total_remaining_qty"),
                 symbol=_optional_symbol(data),
             ),
         )

@@ -6,6 +6,8 @@ from sim.tes_models import TesEngineEvent, parse_events
 from sim.tes_models.commands import (
     CancelOrderCommand,
     LimitOrderCommand,
+    HiddenOrderCommand,
+    IcebergOrderCommand,
     MarketOrderCommand,
     ReplaceOrderCommand,
     SetTradingPhaseCommand,
@@ -22,6 +24,14 @@ def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
         return parse_events(
             engine.place_limit_order(side, command.price, command.qty, command.time_in_force, command.symbol)
         )
+
+    if isinstance(command, HiddenOrderCommand):
+        side = "Bid" if command.side == "BUY" else "Ask"
+        return parse_events(engine.place_hidden_order(side, command.price, command.qty, command.symbol))
+
+    if isinstance(command, IcebergOrderCommand):
+        side = "Bid" if command.side == "BUY" else "Ask"
+        return parse_events(engine.place_iceberg_order(side, command.price, command.total_qty, command.display_qty, command.symbol))
 
     if isinstance(command, MarketOrderCommand):
         side = "Bid" if command.side == "BUY" else "Ask"

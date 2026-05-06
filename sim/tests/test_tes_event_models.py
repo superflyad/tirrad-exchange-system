@@ -100,3 +100,43 @@ def test_parse_event_accepts_optional_symbol() -> None:
 
     assert event.type == "TradeExecuted"
     assert event.data.symbol == "AAA"
+
+
+def test_parse_hidden_and_iceberg_events() -> None:
+    hidden = parse_event(
+        {"type": "HiddenOrderAccepted", "data": {"order_id": 1, "side": "SELL", "price": 100, "total_qty": 5}}
+    )
+    assert hidden.type == "HiddenOrderAccepted"
+
+    iceberg = parse_event(
+        {
+            "type": "IcebergOrderAccepted",
+            "data": {
+                "order_id": 2,
+                "side": "SELL",
+                "price": 101,
+                "total_qty": 7,
+                "display_qty": 3,
+                "reserve_qty": 4,
+                "hidden_remaining": 4,
+                "current_visible_qty": 3,
+            },
+        }
+    )
+    assert iceberg.type == "IcebergOrderAccepted"
+
+    replenished = parse_event(
+        {
+            "type": "IcebergReplenished",
+            "data": {
+                "order_id": 2,
+                "side": "SELL",
+                "price": 101,
+                "replenished_qty": 3,
+                "reserve_qty": 1,
+                "hidden_remaining": 1,
+                "total_remaining_qty": 4,
+            },
+        }
+    )
+    assert replenished.type == "IcebergReplenished"

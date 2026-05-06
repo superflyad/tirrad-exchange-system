@@ -2,28 +2,42 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sim.api.errors import InvalidRequestError, RunExecutionError, RunNotFoundError
 from sim.api.models import BacktestRunRequest, RunDetail, RunSummary, SessionRunRequest
 from sim.api.services.backtest_service import run_backtest
 from sim.api.services.session_service import run_session
+from sim.api.services.stream_service import StreamService
 from sim.api.storage import RunRecord, RunStore
 
 
 class RunService:
     """Coordinates run creation, synchronous execution, and result storage."""
 
-    def __init__(self, store: RunStore) -> None:
+    def __init__(self, store: RunStore, stream_service: StreamService | None = None) -> None:
         self._store = store
+        self._stream_service = stream_service
 
     def run_session(self, request: SessionRunRequest) -> RunDetail:
-        return self._execute("session", request.model_dump(), lambda: run_session(request))
+        return self._execute(
+            "session",
+            request.model_dump(),
+            lambda run_id: run_session(
+                request, run_id=run_id, progress_callback=self._progress_publisher(run_id)
+            ),
+        )
 
     def run_backtest(self, request: BacktestRunRequest) -> RunDetail:
-        return self._execute("backtest", request.model_dump(), lambda: run_backtest(request))
+        return self._execute(
+            "backtest",
+            request.model_dump(),
+            lambda run_id: run_backtest(
+                request, run_id=run_id, progress_callback=self._progress_publisher(run_id)
+            ),
+        )
 
     def list_runs(self) -> list[RunSummary]:
         return [self._to_summary(record) for record in self._store.list_runs()]
@@ -93,22 +107,27 @@ class RunService:
     def delete_run(self, run_id: str) -> None:
         if not self._store.delete_run(run_id):
             raise RunNotFoundError(run_id)
+        if self._stream_service is not None:
+            self._stream_service.close(run_id)
 
     def _execute(
-        self, run_type: str, config: dict[str, Any], executor: Callable[[], dict[str, Any]]
+        self, run_type: str, config: dict[str, Any], executor: Callable[[str], dict[str, Any]]
     ) -> RunDetail:
         record = self._store.create_run(run_type=run_type, config=config)
         now = datetime.now(UTC)
         self._store.update_run(record.run_id, status="running", started_at=now)
+        self._publish(record.run_id, "status", "run_started", {"run_type": run_type, "config": config})
         try:
-            result = executor()
-        except InvalidRequestError:
+            result = executor(record.run_id)
+        except InvalidRequestError as exc:
             self._store.update_run(
                 record.run_id,
                 status="failed",
                 completed_at=datetime.now(UTC),
                 error="invalid request",
             )
+            self._publish(record.run_id, "error", "run_failed", {"error": str(exc) or "invalid request"})
+            self._close_stream(record.run_id)
             raise
         except Exception as exc:
             message = str(exc) or exc.__class__.__name__
@@ -118,8 +137,11 @@ class RunService:
                 completed_at=datetime.now(UTC),
                 error=message,
             )
+            self._publish(record.run_id, "error", "run_failed", {"error": message})
+            self._close_stream(record.run_id)
             raise RunExecutionError(message) from exc
 
+        self._publish_result_streams(record.run_id, config, result)
         self._store.store_result(
             record.run_id,
             report=result["report"],
@@ -134,7 +156,62 @@ class RunService:
         )
         if completed is None:
             raise RunNotFoundError(record.run_id)
+        self._publish(record.run_id, "completed", "run_completed", self._completion_payload(result))
+        self._close_stream(record.run_id)
         return self._to_detail(completed)
+
+    def _progress_publisher(self, run_id: str) -> Callable[[dict[str, Any]], None]:
+        def publish_progress(payload: dict[str, Any]) -> None:
+            step = payload.get("step") if isinstance(payload.get("step"), int) else None
+            self._publish(run_id, "progress", "progress", payload, step=step)
+        return publish_progress
+
+    def _publish_result_streams(self, run_id: str, config: dict[str, Any], result: dict[str, Any]) -> None:
+        if bool(config.get("stream_events", False)):
+            for event in result.get("events", []):
+                if isinstance(event, dict):
+                    data = event.get("data", {}) if isinstance(event.get("data"), dict) else {}
+                    step = event.get("step") or data.get("step")
+                    self._publish(
+                        run_id,
+                        "event",
+                        str(event.get("type", "event")),
+                        event,
+                        step=step if isinstance(step, int) else None,
+                    )
+        if bool(config.get("stream_snapshots", False)):
+            for snapshot in result.get("snapshots", []):
+                if isinstance(snapshot, dict):
+                    step = snapshot.get("step") if isinstance(snapshot.get("step"), int) else None
+                    self._publish(run_id, "snapshot", "snapshot", snapshot, step=step)
+
+    def _completion_payload(self, result: dict[str, Any]) -> dict[str, Any]:
+        report = result.get("report") if isinstance(result.get("report"), dict) else {}
+        return {
+            "report_summary": self._report_summary(report),
+            "total_events": len(result.get("events", [])),
+            "total_snapshots": len(result.get("snapshots", [])),
+            "total_accounts": len(result.get("accounts", [])),
+        }
+
+    def _publish(
+        self,
+        run_id: str,
+        category: str,
+        message_type: str,
+        payload: dict[str, Any],
+        *,
+        step: int | None = None,
+    ) -> None:
+        if self._stream_service is not None:
+            self._stream_service.publish(
+                run_id,
+                {"category": category, "type": message_type, "payload": payload, "step": step},
+            )
+
+    def _close_stream(self, run_id: str) -> None:
+        if self._stream_service is not None:
+            self._stream_service.close(run_id)
 
     def _require_run(self, run_id: str) -> RunRecord:
         record = self._store.get_run(run_id)

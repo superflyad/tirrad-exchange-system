@@ -154,6 +154,14 @@ class InMemoryRunStore:
             return None
         return deepcopy(_page(record.logs, limit=limit, offset=offset))
 
+    def append_log(self, run_id: str, log: dict[str, Any]) -> bool:
+        with self._lock:
+            record = self._records.get(run_id)
+            if record is None:
+                return False
+            record.logs.append(deepcopy(log))
+            return True
+
     def store_result(
         self,
         run_id: str,
@@ -172,7 +180,8 @@ class InMemoryRunStore:
             record.events = deepcopy(events)
             record.snapshots = deepcopy(snapshots)
             record.accounts = deepcopy(accounts)
-            record.logs = deepcopy(logs or [])
+            if logs is not None:
+                record.logs = deepcopy(logs)
             return deepcopy(record)
 
 

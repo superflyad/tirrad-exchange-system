@@ -277,3 +277,53 @@ Expected local-use limits: this backend is intended for single-node development,
 - Replay currently reconstructs from persisted artifacts and does not re-run the C++ engine unless a future persisted command stream is added.
 - Timeline command entries are reserved for persisted command artifacts; current session/backtest storage exposes events, snapshots, accounts, and logs.
 - Postgres/distributed execution, deeper replay indexing, and dashboard APIs are planned extension points.
+
+
+## Live run streaming with SSE
+
+API clients can watch run progress by connecting to the Server-Sent Events endpoint for a run:
+
+```http
+GET /runs/{run_id}/stream
+Accept: text/event-stream
+```
+
+A session or backtest request can tune streaming volume with optional fields:
+
+```json
+{
+  "scenario": "calm_market",
+  "steps": 25,
+  "progress_interval": 5,
+  "stream_events": false,
+  "stream_snapshots": false
+}
+```
+
+- `progress_interval` defaults to `10` and controls progress-log cadence.
+- `stream_events` defaults to `false`; enable it only when clients need serialized engine events in the stream.
+- `stream_snapshots` defaults to `false`; enable it only when clients need book snapshots in the stream.
+
+Each SSE record uses the event category as the SSE event name and contains one JSON `data` object:
+
+```text
+event: progress
+data: {"run_id":"abc123","timestamp":"2026-05-06T12:00:00Z","step":10,"category":"progress","type":"progress","payload":{"step":10,"total_steps":25,"total_orders":91,"total_trades":12,"latest_mid":{"DEFAULT":100.5}}}
+```
+
+Stream message fields are:
+
+- `run_id`
+- `timestamp`
+- `step` when available
+- `category`: `status`, `progress`, `event`, `snapshot`, `account`, `log`, `error`, or `completed`
+- `type`
+- `payload`
+
+Behavior notes and current limitations:
+
+- Missing runs return `404`.
+- Completed runs replay recent stored stream messages and then close.
+- The API uses SSE, not WebSockets; clients should reconnect with normal SSE retry behavior if the HTTP connection drops.
+- Existing synchronous run endpoints still return only after execution completes, so clients generally connect after they know the `run_id`; live in-flight consumption is available to callers that have obtained a run id from shared storage or orchestration.
+- Event and snapshot streaming are opt-in to avoid noisy logs and large response bodies for quiet runs.

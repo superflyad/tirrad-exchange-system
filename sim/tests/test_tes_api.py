@@ -298,3 +298,67 @@ def test_missing_run_timeline_returns_404() -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "run_not_found"
+
+
+def _sse_payloads(text: str) -> list[dict[str, object]]:
+    import json
+
+    payloads: list[dict[str, object]] = []
+    for block in text.strip().split("\n\n"):
+        for line in block.splitlines():
+            if line.startswith("data: "):
+                payloads.append(json.loads(line.removeprefix("data: ")))
+    return payloads
+
+
+def test_stream_endpoint_exists_for_completed_run() -> None:
+    client = _client()
+    created = client.post("/sessions/run", json=_session_payload()).json()
+
+    response = client.get(f"/runs/{created['run_id']}/stream")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+
+def test_missing_run_stream_returns_404() -> None:
+    response = _client().get("/runs/missing/stream")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "run_not_found"
+
+
+def test_session_run_publishes_progress_messages() -> None:
+    client = _client()
+    created = client.post("/sessions/run", json=_session_payload() | {"progress_interval": 2}).json()
+
+    response = client.get(f"/runs/{created['run_id']}/stream")
+
+    assert response.status_code == 200
+    messages = _sse_payloads(response.text)
+    progress = [message for message in messages if message["category"] == "progress"]
+    assert progress
+    assert progress[0]["payload"]["total_orders"] >= 0  # type: ignore[index]
+
+
+def test_completed_run_stream_emits_completion_message() -> None:
+    client = _client()
+    created = client.post("/sessions/run", json=_session_payload()).json()
+
+    messages = _sse_payloads(client.get(f"/runs/{created['run_id']}/stream").text)
+
+    completed = [message for message in messages if message["category"] == "completed"]
+    assert completed
+    assert completed[-1]["type"] == "run_completed"
+
+
+def test_quiet_stream_mode_does_not_log_every_event_or_snapshot() -> None:
+    client = _client()
+    created = client.post("/sessions/run", json=_session_payload() | {"progress_interval": 10}).json()
+
+    logs = client.get(f"/runs/{created['run_id']}/logs").json()["logs"]
+    categories = [log.get("category") for log in logs]
+
+    assert "event" not in categories
+    assert "snapshot" not in categories
+    assert categories.count("progress") <= 2

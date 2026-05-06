@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from sim.tes_engine_adapter import execute_command
 from sim.tes_models.commands import LimitOrderCommand, TesCommand
 from sim.tes_models.events import OrderRejected, TesEngineEvent, TradeExecuted
@@ -39,7 +39,12 @@ class BacktestResult:
 class BacktestRunner:
     def __init__(self, engine: Any, config: BacktestConfig, strategies: list[Strategy]) -> None:
         self._engine = engine; self._config = config; self._strategies = strategies
-    def run(self) -> BacktestResult:
+    def run(
+        self,
+        *,
+        progress_interval: int = 10,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> BacktestResult:
         all_commands=[]; all_events=[]; steps=[]; snapshots=[]; account_states=[]
         cash=self._config.initial_cash; positions={s:0 for s in self._config.symbols}
         pending=[]
@@ -64,6 +69,18 @@ class BacktestRunner:
             acct={"cash":cash,"positions":dict(positions),"equity":equity}
             account_states.append(acct)
             steps.append(BacktestStep(idx,[command],step_events,snaps,acct))
+            if progress_callback is not None:
+                interval = max(1, progress_interval)
+                if idx == 1 or not pending or idx % interval == 0:
+                    progress_callback({
+                        "step": idx,
+                        "total_steps": None,
+                        "symbols": list(self._config.symbols),
+                        "total_orders": len(all_commands),
+                        "total_trades": len([e for e in all_events if isinstance(e, TradeExecuted)]),
+                        "latest_mid": {sym: self._mid(snaps.get(sym, {})) for sym in self._config.symbols},
+                        "pending_commands": len(pending),
+                    })
         for s in self._strategies: s.on_finish()
         return BacktestResult(self._config,steps,all_commands,all_events,snapshots,account_states,self._build_report(all_commands,all_events,account_states,positions,cash))
     def _mark_to_market(self, positions: dict[str, int], snapshots: dict[str, dict[str, Any]]) -> int:

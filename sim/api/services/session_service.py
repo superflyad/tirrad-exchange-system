@@ -9,7 +9,12 @@ from sim.api.errors import InvalidRequestError
 from sim.api.models import SessionRunRequest
 
 
-def run_session(request: SessionRunRequest) -> dict[str, Any]:
+def run_session(
+    request: SessionRunRequest,
+    *,
+    run_id: str | None = None,
+    progress_callback: Any | None = None,
+) -> dict[str, Any]:
     """Execute a market session and return JSON-friendly artifacts."""
 
     from sim.session.models import MarketSessionConfig
@@ -37,7 +42,11 @@ def run_session(request: SessionRunRequest) -> dict[str, Any]:
     )
     from sim.session.runner import MarketSessionRunner
 
-    result = MarketSessionRunner(config).run(progress_callback=None, verbose=False)
+    result = MarketSessionRunner(config).run(
+        progress_interval=request.progress_interval,
+        progress_callback=progress_callback,
+        verbose=request.stream_events or request.stream_snapshots,
+    )
     report = asdict(result.report)
     accounts = [
         {

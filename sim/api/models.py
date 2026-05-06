@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
 
 RunType = Literal["session", "backtest"]
 RunStatus = Literal["pending", "running", "completed", "failed", "canceled"]
 TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
+StreamCategory = Literal["status", "progress", "event", "snapshot", "account", "log", "error", "completed"]
 ReplayStatus = Literal["replayed", "reconstructed", "unavailable", "mismatch"]
 
 
@@ -29,6 +30,9 @@ class SessionRunRequest(StrictApiModel):
     participants: StrictInt = Field(default=20, gt=0)
     depth_levels: StrictInt = Field(default=5, ge=0)
     initial_cash: StrictInt = Field(default=1_000_000, ge=0)
+    progress_interval: StrictInt = Field(default=10, gt=0)
+    stream_events: StrictBool = False
+    stream_snapshots: StrictBool = False
 
     @field_validator("symbols")
     @classmethod
@@ -44,6 +48,9 @@ class BacktestRunRequest(StrictApiModel):
     symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
     initial_cash: StrictInt = Field(default=1_000_000, ge=0)
     depth_levels: StrictInt = Field(default=5, ge=0)
+    progress_interval: StrictInt = Field(default=10, gt=0)
+    stream_events: StrictBool = False
+    stream_snapshots: StrictBool = False
 
     @field_validator("strategy")
     @classmethod
@@ -147,6 +154,15 @@ class RunInspectionSummary(StrictApiModel):
     final_prices: dict[str, Any]
     final_positions: dict[str, Any]
     error: str | None
+
+
+class StreamMessage(StrictApiModel):
+    run_id: str
+    timestamp: datetime
+    step: int | None = None
+    category: StreamCategory
+    type: str
+    payload: dict[str, Any]
 
 
 class ErrorPayload(StrictApiModel):

@@ -162,7 +162,8 @@ class SQLiteRunStore:
             self._replace_payload_rows("run_events", run_id, _event_rows(run_id, events))
             self._replace_payload_rows("run_snapshots", run_id, _snapshot_rows(run_id, snapshots))
             self._replace_payload_rows("run_accounts", run_id, _account_rows(run_id, accounts))
-            self._replace_payload_rows("run_logs", run_id, _log_rows(run_id, logs or []))
+            if logs is not None:
+                self._replace_payload_rows("run_logs", run_id, _log_rows(run_id, logs))
         return self.get_run(run_id)
 
     def get_report(self, run_id: str) -> dict[str, Any] | None:
@@ -270,6 +271,30 @@ class SQLiteRunStore:
             limit=limit,
             offset=offset,
         )
+
+    def append_log(self, run_id: str, log: dict[str, Any]) -> bool:
+        if not self._run_exists(run_id):
+            return False
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), -1) + 1 AS sequence FROM run_logs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            sequence = int(row["sequence"] if row is not None else 0)
+            self._connection.execute(
+                """
+                INSERT INTO run_logs (run_id, sequence, level, message, payload_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    sequence,
+                    _string_or_none(log.get("level") or log.get("category")),
+                    _string_or_none(log.get("message") or log.get("type")),
+                    _encode_json(log),
+                ),
+            )
+        return True
 
     def close(self) -> None:
         with self._lock:

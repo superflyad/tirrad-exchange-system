@@ -210,3 +210,57 @@ TEST_CASE("aggregate qty stays correct after add cancel and partial fill") {
     CHECK(d.asks[0].qty.value == 2);
     CHECK(book.validate_invariants());
 }
+
+TEST_CASE("hidden order is excluded from displayed depth but can fill") {
+    tes::OrderBook book;
+    (void)book.add_hidden_order(tes::Order{101, tes::Side::Ask, tes::Price{100}, tes::Qty{5}});
+
+    CHECK(book.depth(1).asks.empty());
+    CHECK_FALSE(book.best_ask().has_value());
+    REQUIRE(book.best_match_price(tes::Side::Bid, tes::Price{100}).has_value());
+
+    const auto fill = book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(fill.has_value());
+    CHECK(fill->maker_id == 101);
+    CHECK(fill->qty.value == 2);
+    CHECK(fill->maker_remaining_qty.value == 3);
+    CHECK(book.depth(1).asks.empty());
+    CHECK(book.validate_invariants());
+}
+
+TEST_CASE("displayed liquidity has priority over hidden at same price") {
+    tes::OrderBook book;
+    (void)book.add_hidden_order(tes::Order{201, tes::Side::Ask, tes::Price{100}, tes::Qty{5}});
+    (void)book.add_limit_order(tes::Order{202, tes::Side::Ask, tes::Price{100}, tes::Qty{2}});
+
+    const auto first = book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(first.has_value());
+    CHECK(first->maker_id == 202);
+    const auto second = book.fill_best(tes::Side::Ask, tes::Qty{1});
+    REQUIRE(second.has_value());
+    CHECK(second->maker_id == 201);
+}
+
+TEST_CASE("iceberg shows only visible clip and replenishes at back of iceberg queue") {
+    tes::OrderBook book;
+    (void)book.add_iceberg_order(tes::Order{301, tes::Side::Ask, tes::Price{100}, tes::Qty{5}, tes::OrderVisibility::Iceberg, tes::Qty{5}, tes::Qty{2}, tes::Qty{0}});
+    auto depth = book.depth(1);
+    REQUIRE(depth.asks.size() == 1);
+    CHECK(depth.asks[0].qty.value == 2);
+
+    const auto first = book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(first.has_value());
+    REQUIRE(first->replenished.has_value());
+    CHECK(first->replenished->replenished_qty.value == 2);
+    depth = book.depth(1);
+    REQUIRE(depth.asks.size() == 1);
+    CHECK(depth.asks[0].qty.value == 2);
+
+    (void)book.add_iceberg_order(tes::Order{302, tes::Side::Ask, tes::Price{100}, tes::Qty{2}, tes::OrderVisibility::Iceberg, tes::Qty{2}, tes::Qty{2}, tes::Qty{0}});
+    const auto second = book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(second.has_value());
+    CHECK(second->maker_id == 301);
+    const auto third = book.fill_best(tes::Side::Ask, tes::Qty{2});
+    REQUIRE(third.has_value());
+    CHECK(third->maker_id == 302);
+}

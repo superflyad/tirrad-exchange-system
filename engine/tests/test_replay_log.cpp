@@ -216,3 +216,29 @@ TEST_CASE("replay log replays auction phase and uncross deterministically") {
     CHECK(std::get<tes::AuctionUncross>(replayed[3][0]).qty.value == 2);
     CHECK(collect_trades(replayed[3]).size() == 1);
 }
+
+TEST_CASE("replay preserves hidden submissions and iceberg replenishment deterministically") {
+    tes::MatchingEngine engine;
+    tes::ReplayLog log;
+
+    auto hidden = engine.place_hidden_order(0, "AAA", tes::Side::Ask, tes::Price{99}, tes::Qty{1});
+    log.record(tes::HiddenOrderCommand{tes::Side::Ask, tes::Price{99}, tes::Qty{1}, "AAA"}, hidden);
+    auto iceberg = engine.place_iceberg_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{5}, tes::Qty{2});
+    log.record(tes::IcebergOrderCommand{tes::Side::Ask, tes::Price{100}, tes::Qty{5}, tes::Qty{2}, "AAA"}, iceberg);
+    auto sweep = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{3});
+    log.record(tes::LimitOrderCommand{tes::Side::Bid, tes::Price{100}, tes::Qty{3}, "AAA"}, sweep);
+
+    const std::string json = log.to_json();
+    CHECK(json.find("HiddenOrderCommand") != std::string::npos);
+    CHECK(json.find("IcebergOrderCommand") != std::string::npos);
+    CHECK(json.find("IcebergReplenished") != std::string::npos);
+
+    const auto replayed = tes::replay_commands(log.entries());
+    REQUIRE(replayed.size() == log.entries().size());
+    for (std::size_t index = 0; index < replayed.size(); ++index) {
+        REQUIRE(replayed[index].size() == log.entries()[index].events.size());
+        for (std::size_t event_index = 0; event_index < replayed[index].size(); ++event_index) {
+            CHECK(events_equal(replayed[index][event_index], log.entries()[index].events[event_index]));
+        }
+    }
+}

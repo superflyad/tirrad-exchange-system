@@ -400,12 +400,28 @@ Qty MatchingEngine::indicative_volume(const Symbol& symbol) const { return compu
 std::int64_t MatchingEngine::auction_imbalance(const Symbol& symbol) const { return compute_auction_indicative(symbol).imbalance; }
 
 std::vector<Event> MatchingEngine::rest_limit_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty) {
+    return rest_visible_order(account_id, symbol, id, side, price, qty, OrderVisibility::Displayed);
+}
+
+std::vector<Event> MatchingEngine::rest_visible_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty, OrderVisibility visibility, Qty display_qty) {
     AccountSnapshot& account = accounts_[account_id];
     OrderBook& book = book_for(symbol);
-    std::vector<Event> events = book.add_limit_order(Order{id, side, price, qty});
+    std::vector<Event> events = visibility == OrderVisibility::Hidden
+        ? book.add_hidden_order(Order{id, side, price, qty})
+        : visibility == OrderVisibility::Iceberg
+            ? book.add_iceberg_order(Order{id, side, price, qty, OrderVisibility::Iceberg, qty, display_qty, Qty{0}})
+            : book.add_limit_order(Order{id, side, price, qty});
     for (Event& event : events) {
         if (std::holds_alternative<OrderAccepted>(event)) {
             auto accepted = std::get<OrderAccepted>(event);
+            accepted.symbol = symbol;
+            event = accepted;
+        } else if (std::holds_alternative<HiddenOrderAccepted>(event)) {
+            auto accepted = std::get<HiddenOrderAccepted>(event);
+            accepted.symbol = symbol;
+            event = accepted;
+        } else if (std::holds_alternative<IcebergOrderAccepted>(event)) {
+            auto accepted = std::get<IcebergOrderAccepted>(event);
             accepted.symbol = symbol;
             event = accepted;
         } else if (std::holds_alternative<TopOfBook>(event)) {
@@ -414,7 +430,7 @@ std::vector<Event> MatchingEngine::rest_limit_order(AccountId account_id, const 
             event = top;
         }
     }
-    order_ownership_by_id_[id] = {account_id, symbol, side, price, qty};
+    order_ownership_by_id_[id] = {account_id, symbol, side, price, qty, visibility, display_qty};
     if (side == Side::Bid) {
         const std::int64_t reserve_notional = price.ticks * qty.value;
         const std::int64_t reserve_fee = std::max(fee_for_notional(reserve_notional, false), fee_for_notional(reserve_notional, true));
@@ -580,10 +596,19 @@ std::vector<Event> MatchingEngine::place_limit_order(AccountId account_id, const
 std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(AccountId account_id, const Symbol& symbol,
                                                                          OrderId taker_id, Side side, Price price,
                                                                          Qty qty, TimeInForce tif) {
+    return place_visible_order_with_account_and_id(account_id, symbol, taker_id, side, price, qty, tif, OrderVisibility::Displayed);
+}
+
+std::vector<Event> MatchingEngine::place_visible_order_with_account_and_id(AccountId account_id, const Symbol& symbol,
+                                                                         OrderId taker_id, Side side, Price price,
+                                                                         Qty qty, TimeInForce tif, OrderVisibility visibility, Qty display_qty) {
     if (!is_valid_price(price)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidPrice, symbol}};
     }
     if (!is_valid_qty(qty)) {
+        return {OrderRejected{side, price, qty, RejectReason::InvalidQuantity, symbol}};
+    }
+    if (visibility == OrderVisibility::Iceberg && (!is_valid_qty(display_qty) || display_qty.value > qty.value)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidQuantity, symbol}};
     }
 
@@ -601,7 +626,7 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
     }
 
     if (trading_phase(symbol) == TradingPhase::OpeningAuction || trading_phase(symbol) == TradingPhase::ClosingAuction) {
-        return rest_limit_order(account_id, symbol, taker_id, side, price, qty);
+        return rest_visible_order(account_id, symbol, taker_id, side, price, qty, visibility, display_qty);
     }
 
     OrderBook& book = book_for(symbol);
@@ -613,7 +638,7 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
     Qty remaining = qty;
 
     while (remaining.value > 0) {
-        const std::optional<Price> resting_price = side == Side::Bid ? book.best_ask() : book.best_bid();
+        const std::optional<Price> resting_price = book.best_match_price(side, price);
         if (!resting_price.has_value() || !crosses(side, price, *resting_price)) {
             break;
         }
@@ -694,10 +719,15 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
         assert_invariants(symbol, account_id, maker_account_id);
 
         if (owner_it != order_ownership_by_id_.end()) {
-            owner_it->second.qty.value -= fill->qty.value;
-            if (owner_it->second.qty.value == 0) {
+            owner_it->second.qty = fill->maker_remaining_qty;
+            if (fill->maker_filled) {
                 order_ownership_by_id_.erase(owner_it);
             }
+        }
+        if (fill->replenished.has_value()) {
+            auto replenished = *fill->replenished;
+            replenished.symbol = symbol;
+            events.emplace_back(replenished);
         }
 
         if (remaining.value > 0) {
@@ -713,10 +743,22 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
             events.emplace_back(OrderExpired{taker_id, symbol});
             append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "ioc_fok_expiration_release", 0, 0, 0, 0, taker_id, std::nullopt});
         } else {
-            std::vector<Event> accepted_events = book.add_limit_order(Order{taker_id, side, price, remaining});
+            std::vector<Event> accepted_events = visibility == OrderVisibility::Hidden
+                ? book.add_hidden_order(Order{taker_id, side, price, remaining})
+                : visibility == OrderVisibility::Iceberg
+                    ? book.add_iceberg_order(Order{taker_id, side, price, remaining, OrderVisibility::Iceberg, remaining, display_qty, Qty{0}})
+                    : book.add_limit_order(Order{taker_id, side, price, remaining});
             for (Event& event : accepted_events) {
                 if (std::holds_alternative<OrderAccepted>(event)) {
                     auto accepted = std::get<OrderAccepted>(event);
+                    accepted.symbol = symbol;
+                    event = accepted;
+                } else if (std::holds_alternative<HiddenOrderAccepted>(event)) {
+                    auto accepted = std::get<HiddenOrderAccepted>(event);
+                    accepted.symbol = symbol;
+                    event = accepted;
+                } else if (std::holds_alternative<IcebergOrderAccepted>(event)) {
+                    auto accepted = std::get<IcebergOrderAccepted>(event);
                     accepted.symbol = symbol;
                     event = accepted;
                 } else if (std::holds_alternative<TopOfBook>(event)) {
@@ -726,7 +768,7 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
                 }
             }
 
-            order_ownership_by_id_[taker_id] = {account_id, symbol, side, price, remaining};
+            order_ownership_by_id_[taker_id] = {account_id, symbol, side, price, remaining, visibility, display_qty};
             if (side == Side::Bid) {
                 const std::int64_t reserve_notional = price.ticks * remaining.value;
                 const std::int64_t reserve_fee = std::max(fee_for_notional(reserve_notional, false), fee_for_notional(reserve_notional, true));
@@ -753,6 +795,41 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
         }
     }
 
+    return events;
+}
+
+
+std::vector<Event> MatchingEngine::place_hidden_order(Side side, Price price, Qty qty) {
+    return place_hidden_order(kDefaultAccountId, kDefaultSymbol, side, price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_hidden_order(AccountId account_id, Side side, Price price, Qty qty) {
+    return place_hidden_order(account_id, kDefaultSymbol, side, price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_hidden_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty) {
+    const OrderId id = next_order_id_++;
+    std::vector<Event> events = place_visible_order_with_account_and_id(account_id, symbol, id, side, price, qty, TimeInForce::Gtc, OrderVisibility::Hidden);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::place_iceberg_order(Side side, Price price, Qty total_qty, Qty display_qty) {
+    return place_iceberg_order(kDefaultAccountId, kDefaultSymbol, side, price, total_qty, display_qty);
+}
+
+std::vector<Event> MatchingEngine::place_iceberg_order(AccountId account_id, Side side, Price price, Qty total_qty, Qty display_qty) {
+    return place_iceberg_order(account_id, kDefaultSymbol, side, price, total_qty, display_qty);
+}
+
+std::vector<Event> MatchingEngine::place_iceberg_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty total_qty, Qty display_qty) {
+    const OrderId id = next_order_id_++;
+    std::vector<Event> events = place_visible_order_with_account_and_id(account_id, symbol, id, side, price, total_qty, TimeInForce::Gtc, OrderVisibility::Iceberg, display_qty);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
     return events;
 }
 
@@ -1003,6 +1080,9 @@ std::vector<Event> MatchingEngine::replace_order(AccountId account_id, OrderId i
     if (ownership_it->second.account_id != account_id) {
         return {CancelRejected{id, RejectReason::WrongAccount, ownership_it->second.symbol}};
     }
+    if (ownership_it->second.visibility != OrderVisibility::Displayed) {
+        return {OrderRejected{ownership_it->second.side, new_price, new_qty, RejectReason::UnknownOrderId, ownership_it->second.symbol}};
+    }
     if (!is_valid_price(new_price)) {
         return {OrderRejected{ownership_it->second.side, new_price, new_qty, RejectReason::InvalidPrice, ownership_it->second.symbol}};
     }
@@ -1136,6 +1216,10 @@ void MatchingEngine::bump_sequence_number_from_events(const std::vector<Event>& 
     for (const Event& event : events) {
         if (std::holds_alternative<OrderAccepted>(event)) {
             ++sequence_numbers_by_symbol_[std::get<OrderAccepted>(event).symbol];
+        } else if (std::holds_alternative<IcebergOrderAccepted>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<IcebergOrderAccepted>(event).symbol];
+        } else if (std::holds_alternative<IcebergReplenished>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<IcebergReplenished>(event).symbol];
         } else if (std::holds_alternative<StopOrderAccepted>(event)) {
             ++sequence_numbers_by_symbol_[std::get<StopOrderAccepted>(event).symbol];
         } else if (std::holds_alternative<StopOrderTriggered>(event)) {

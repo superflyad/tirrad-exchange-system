@@ -101,3 +101,34 @@ def test_python_auction_flow_smoke() -> None:
     assert any(event.type == "AuctionUncross" for event in uncross_events)
     assert any(event.type == "TradeExecuted" for event in uncross_events)
     assert engine.trading_phase("AUC") == "Continuous"
+
+
+def test_hidden_order_api_smoke_and_depth_excludes_hidden() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    raw_events = engine.place_hidden_order(side="Ask", price_ticks=100, qty=5, symbol="HID")
+    events = parse_events(raw_events)
+
+    assert events[0].type == "HiddenOrderAccepted"
+    assert engine.depth(1, "HID")["asks"] == []
+
+    trade_events = parse_events(engine.place_limit_order(side="Bid", price_ticks=100, qty=2, symbol="HID"))
+    assert any(event.type == "TradeExecuted" for event in trade_events)
+
+
+def test_iceberg_order_api_smoke_and_depth_shows_visible_only() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    raw_events = engine.place_iceberg_order(side="Ask", price_ticks=101, total_qty=7, display_qty=3, symbol="ICE")
+    events = parse_events(raw_events)
+
+    assert events[0].type == "IcebergOrderAccepted"
+    assert events[0].data.current_visible_qty == 3
+    depth = engine.depth(1, "ICE")
+    assert depth["asks"] == [{"price": 101, "qty": 3}]
+
+    fill_events = parse_events(engine.place_limit_order(side="Bid", price_ticks=101, qty=3, symbol="ICE"))
+    assert any(event.type == "IcebergReplenished" for event in fill_events)
+    assert engine.depth(1, "ICE")["asks"] == [{"price": 101, "qty": 3}]

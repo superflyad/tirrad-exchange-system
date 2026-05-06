@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from random import Random
 
-from sim.tes_models.commands import LimitOrderCommand, MarketOrderCommand, TesCommand
+from sim.tes_models.commands import HiddenOrderCommand, IcebergOrderCommand, LimitOrderCommand, MarketOrderCommand, TesCommand
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,16 @@ class MarketParticipant:
                 LimitOrderCommand("BUY", max(1, fair_price - spread), qty, "GTC", symbol),
                 LimitOrderCommand("SELL", max(1, fair_price + spread), qty, "GTC", symbol),
             ]
+        if self.style == "hidden_liquidity_provider":
+            side = "BUY" if rng.random() < 0.5 else "SELL"
+            px = fair_price - spread if side == "BUY" else fair_price + spread
+            return [HiddenOrderCommand(side, max(1, px), qty, symbol)]
+        if self.style == "iceberg_liquidity_provider":
+            display_qty = max(1, min(qty, max(1, qty // 2)))
+            total_qty = max(qty, display_qty + 1)
+            side = "BUY" if rng.random() < 0.5 else "SELL"
+            px = fair_price - spread if side == "BUY" else fair_price + spread
+            return [IcebergOrderCommand(side, max(1, px), total_qty, display_qty, symbol)]
         if self.style == "crossing_taker" or rng.random() < market_order_prob:
             side = "BUY" if rng.random() < 0.5 else "SELL"
             return [MarketOrderCommand(side, qty, symbol)]

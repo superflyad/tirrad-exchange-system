@@ -81,6 +81,46 @@ namespace {
                 data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::HiddenOrderAccepted>) {
+                py::dict out;
+                out["type"] = "HiddenOrderAccepted";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["side"] = side_to_string(evt.side);
+                data["price"] = evt.price.ticks;
+                data["total_qty"] = evt.total_qty.value;
+                data["symbol"] = evt.symbol;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::IcebergOrderAccepted>) {
+                py::dict out;
+                out["type"] = "IcebergOrderAccepted";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["side"] = side_to_string(evt.side);
+                data["price"] = evt.price.ticks;
+                data["total_qty"] = evt.total_qty.value;
+                data["display_qty"] = evt.display_qty.value;
+                data["reserve_qty"] = evt.reserve_qty.value;
+                data["hidden_remaining"] = evt.reserve_qty.value;
+                data["current_visible_qty"] = evt.current_visible_qty.value;
+                data["symbol"] = evt.symbol;
+                out["data"] = data;
+                return out;
+            } else if constexpr (std::is_same_v<T, tes::IcebergReplenished>) {
+                py::dict out;
+                out["type"] = "IcebergReplenished";
+                py::dict data;
+                data["order_id"] = evt.id;
+                data["side"] = side_to_string(evt.side);
+                data["price"] = evt.price.ticks;
+                data["replenished_qty"] = evt.replenished_qty.value;
+                data["reserve_qty"] = evt.reserve_qty.value;
+                data["hidden_remaining"] = evt.reserve_qty.value;
+                data["total_remaining_qty"] = evt.total_remaining_qty.value;
+                data["symbol"] = evt.symbol;
+                out["data"] = data;
+                return out;
             } else if constexpr (std::is_same_v<T, tes::OrderRejected>) {
                 py::dict out;
                 out["type"] = "OrderRejected";
@@ -502,7 +542,26 @@ PYBIND11_MODULE(tes_engine, m) {
              },
              py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("time_in_force") = "GTC",
              py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
-        .def("place_market_order",
+                .def("place_hidden_order",
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty,
+                const std::string& symbol, std::uint64_t account_id) {
+                 const tes::Side parsed_side = side_from_string(side);
+                 const std::vector<tes::Event> events =
+                     self.place_hidden_order(account_id, symbol, parsed_side, tes::Price{price_ticks}, tes::Qty{qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("side"), py::arg("price_ticks"), py::arg("qty"), py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
+        .def("place_iceberg_order",
+             [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t total_qty, std::int64_t display_qty,
+                const std::string& symbol, std::uint64_t account_id) {
+                 const tes::Side parsed_side = side_from_string(side);
+                 const std::vector<tes::Event> events = self.place_iceberg_order(
+                     account_id, symbol, parsed_side, tes::Price{price_ticks}, tes::Qty{total_qty}, tes::Qty{display_qty});
+                 return events_to_dicts(events);
+             },
+             py::arg("side"), py::arg("price_ticks"), py::arg("total_qty"), py::arg("display_qty"),
+             py::arg("symbol") = tes::kDefaultSymbol, py::arg("account_id") = 0)
+.def("place_market_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t qty, const std::string& symbol, std::uint64_t account_id) {
                  const tes::Side parsed_side = side_from_string(side);
                  const std::vector<tes::Event> events = self.place_market_order(account_id, symbol, parsed_side, tes::Qty{qty});

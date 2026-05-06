@@ -1049,3 +1049,41 @@ TEST_CASE("multiple stops trigger by stop id order and pending stop can cancel")
     CHECK(triggered[0].id == second.id);
     CHECK(triggered[1].id == third.id);
 }
+
+TEST_CASE("matching engine hidden and iceberg depth and cancellation") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 100000, 0);
+    engine.set_account_state(2, "AAA", 0, 100);
+
+    const auto hidden_events = engine.place_hidden_order(2, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    REQUIRE(std::holds_alternative<tes::HiddenOrderAccepted>(hidden_events[0]));
+    CHECK(engine.depth("AAA", 1).asks.empty());
+
+    const auto trade_events = engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+    const auto trades = collect_trades(trade_events);
+    REQUIRE(trades.size() == 1);
+    CHECK(trades[0].maker_id == std::get<tes::HiddenOrderAccepted>(hidden_events[0]).id);
+
+    const auto cancel_hidden = engine.cancel(2, std::get<tes::HiddenOrderAccepted>(hidden_events[0]).id);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(cancel_hidden[0]));
+    CHECK(engine.account_snapshot(2).reserved_qty_by_symbol["AAA"] == 0);
+
+    const auto iceberg_events = engine.place_iceberg_order(2, "AAA", tes::Side::Ask, tes::Price{101}, tes::Qty{7}, tes::Qty{3});
+    REQUIRE(std::holds_alternative<tes::IcebergOrderAccepted>(iceberg_events[0]));
+    const auto depth = engine.depth("AAA", 1);
+    REQUIRE(depth.asks.size() == 1);
+    CHECK(depth.asks[0].qty.value == 3);
+    const auto cancel_iceberg = engine.cancel(2, std::get<tes::IcebergOrderAccepted>(iceberg_events[0]).id);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(cancel_iceberg[0]));
+    CHECK(engine.account_snapshot(2).reserved_qty_by_symbol["AAA"] == 0);
+}
+
+TEST_CASE("multi-symbol hidden and iceberg isolation") {
+    tes::MatchingEngine engine;
+    (void)engine.place_hidden_order(0, "AAA", tes::Side::Ask, tes::Price{100}, tes::Qty{5});
+    (void)engine.place_iceberg_order(0, "BBB", tes::Side::Ask, tes::Price{101}, tes::Qty{6}, tes::Qty{2});
+
+    CHECK(engine.depth("AAA", 1).asks.empty());
+    REQUIRE(engine.depth("BBB", 1).asks.size() == 1);
+    CHECK(engine.depth("BBB", 1).asks[0].qty.value == 2);
+}

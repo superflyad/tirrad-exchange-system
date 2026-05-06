@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import time
 from dataclasses import dataclass
@@ -56,9 +57,26 @@ class Worker:
         jobs_completed = 0
         jobs_failed = 0
         polls = 0
-        self._queue.heartbeat(self._worker_id, status="idle")
+        self._queue.register_worker(
+            self._worker_id,
+            hostname=socket.gethostname(),
+            process_id=os.getpid(),
+            capabilities={"run_types": ["session", "backtest", "benchmark"]},
+            status="idle",
+        )
         while self._max_jobs is None or jobs_completed + jobs_failed < self._max_jobs:
             polls += 1
+            worker_record = self._queue.get_worker(self._worker_id)
+            if worker_record is not None and worker_record.shutdown_requested:
+                self._queue.heartbeat(self._worker_id, status="offline")
+                break
+            if worker_record is not None and worker_record.drain_requested:
+                self._queue.heartbeat(self._worker_id, status="idle")
+                if self._once:
+                    break
+                time.sleep(self._poll_interval)
+                continue
+
             item = self._queue.claim_next(self._worker_id)
             if item is None:
                 self._queue.heartbeat(self._worker_id, status="idle")
@@ -67,7 +85,12 @@ class Worker:
                 time.sleep(self._poll_interval)
                 continue
 
-            self._queue.heartbeat(self._worker_id, status="running", current_run_id=item.run_id)
+            self._queue.heartbeat(
+                self._worker_id,
+                status="busy",
+                current_run_id=item.run_id,
+                progress_summary={"phase": "claimed"},
+            )
             self._run_service._store.append_log(  # noqa: SLF001 - worker intentionally records lifecycle logs.
                 item.run_id,
                 {"level": "info", "message": "worker claimed run", "worker_id": self._worker_id},
@@ -78,6 +101,12 @@ class Worker:
                     self._tournament_service.aggregate_for_child(item.run_id)
             except Exception as exc:  # Worker boundary must turn all failures into durable state.
                 message = str(exc) or exc.__class__.__name__
+                self._queue.heartbeat(
+                    self._worker_id,
+                    status="busy",
+                    current_run_id=item.run_id,
+                    progress_summary={"phase": "failed", "error": message},
+                )
                 self._queue.mark_failed(item.run_id, message)
                 self._run_service._store.append_log(  # noqa: SLF001
                     item.run_id,
@@ -87,6 +116,12 @@ class Worker:
                     self._tournament_service.aggregate_for_child(item.run_id)
                 jobs_failed += 1
             else:
+                self._queue.heartbeat(
+                    self._worker_id,
+                    status="busy",
+                    current_run_id=item.run_id,
+                    progress_summary={"phase": "completed"},
+                )
                 self._queue.mark_completed(item.run_id)
                 jobs_completed += 1
             finally:

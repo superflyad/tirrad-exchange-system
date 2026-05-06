@@ -38,7 +38,7 @@ def run_benchmark(payload: BenchmarkRunRequest, request: Request) -> BenchmarkRu
         detail = _service(request).queue_benchmark(payload)
         queue = _queue(request)
         if queue is not None:
-            queue.enqueue(detail.run_id)
+            queue.enqueue(detail.run_id, priority=payload.priority)
         return detail
     return BenchmarkRunModel(**_service(request).run_benchmark(payload).to_dict())
 

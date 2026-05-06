@@ -79,3 +79,5 @@ dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .log-row { display: grid; grid-template-columns: 100px 90px 100px 160px minmax(300px, 1fr); gap: 10px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .error-text { color: var(--danger) !important; margin-top: 8px !important; }
 @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .sidebar { height: auto; position: static; } .split { display: grid; } main { padding: 18px; } .timeline-main, .log-row { grid-template-columns: 1fr; } }
+.alert-panel { border-color: rgba(251, 191, 36, 0.55); background: linear-gradient(180deg, rgba(84, 55, 14, 0.5), rgba(15, 27, 46, 0.96)); }
+.inline-json { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #c7d2fe; font-size: 12px; }

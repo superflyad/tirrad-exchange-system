@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
 
 RunType = Literal["session", "backtest"]
+ExecutionMode = Literal["sync", "queued"]
 RunStatus = Literal["pending", "running", "completed", "failed", "canceled"]
 TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
 StreamCategory = Literal["status", "progress", "event", "snapshot", "account", "log", "error", "completed"]
@@ -21,6 +22,7 @@ class StrictApiModel(BaseModel):
 
 
 class SessionRunRequest(StrictApiModel):
+    mode: ExecutionMode | None = None
     scenario: StrictStr = "calm_market"
     steps: StrictInt = Field(default=25, gt=0)
     symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
@@ -44,6 +46,7 @@ class SessionRunRequest(StrictApiModel):
 
 
 class BacktestRunRequest(StrictApiModel):
+    mode: ExecutionMode | None = None
     strategy: StrictStr
     symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
     initial_cash: StrictInt = Field(default=1_000_000, ge=0)
@@ -79,6 +82,8 @@ class RunSummary(StrictApiModel):
     config: dict[str, Any]
     report_summary: dict[str, Any]
     error: str | None
+    polling_url: str | None = None
+    stream_url: str | None = None
 
 
 class RunDetail(RunSummary):
@@ -173,3 +178,10 @@ class ErrorPayload(StrictApiModel):
 
 class ErrorResponse(StrictApiModel):
     error: ErrorPayload
+
+
+class WorkerSummary(StrictApiModel):
+    worker_id: str
+    status: str
+    updated_at: datetime
+    current_run_id: str | None

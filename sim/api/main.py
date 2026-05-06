@@ -14,6 +14,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reload", action="store_true")
     parser.add_argument("--store", choices=["memory", "sqlite"], default=None)
     parser.add_argument("--sqlite-path", default=None)
+    parser.add_argument("--queue", action="store_true", help="Enable queued run execution by default")
     return parser
 
 
@@ -26,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["TES_RUN_STORE"] = args.store
         if args.sqlite_path is not None:
             os.environ["TES_SQLITE_PATH"] = args.sqlite_path
+        if args.queue:
+            os.environ["TES_QUEUE_ENABLED"] = "1"
         uvicorn.run("sim.api.app:app", host=args.host, port=args.port, reload=args.reload)
         return 0
     return 1

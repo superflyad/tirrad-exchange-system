@@ -296,3 +296,61 @@ class WorkerSummary(StrictApiModel):
     status: str
     updated_at: datetime
     current_run_id: str | None
+
+
+ReplayVerificationStatus = Literal["verified", "mismatch", "partial", "failed"]
+RunDiffStatus = Literal["matching", "mismatch", "partial", "failed"]
+
+
+class EventHashSummaryModel(StrictApiModel):
+    event_hash: str
+    snapshot_hash: str
+    account_hash: str
+    report_hash: str
+    combined_hash: str
+    event_count: StrictInt
+    snapshot_count: StrictInt
+    account_count: StrictInt
+    trade_count: StrictInt
+    sequence_count: StrictInt
+    sequence_hash: str
+
+
+class ReplayVerificationReportModel(StrictApiModel):
+    run_id: str
+    status: ReplayVerificationStatus
+    verified_at: str
+    matching_fields: list[str]
+    mismatched_fields: list[str]
+    message: str
+    original_hashes: EventHashSummaryModel
+    replay_hashes: EventHashSummaryModel | None
+    first_divergence_step: int | None
+    metric_deltas: dict[str, float]
+    comparisons: dict[str, bool]
+    error: str | None = None
+
+
+class RunDiffRequest(StrictApiModel):
+    left_run_id: StrictStr
+    right_run_id: StrictStr
+
+
+class RunDiffResultModel(StrictApiModel):
+    left_run_id: str
+    right_run_id: str
+    status: RunDiffStatus
+    generated_at: str
+    matching_fields: list[str]
+    mismatched_fields: list[str]
+    first_divergence_step: int | None
+    metric_deltas: dict[str, float]
+    event_hash_comparison: dict[str, Any]
+    snapshot_hash_comparison: dict[str, Any]
+    account_hash_comparison: dict[str, Any]
+    report_hash_comparison: dict[str, Any]
+    timeline_divergence: dict[str, Any]
+    pnl_divergence: dict[str, Any]
+    sequence_divergence: dict[str, Any]
+    left_hashes: EventHashSummaryModel
+    right_hashes: EventHashSummaryModel

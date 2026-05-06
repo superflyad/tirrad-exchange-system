@@ -26,6 +26,7 @@ class RunRecord:
     accounts: list[dict[str, Any]] = field(default_factory=list)
     logs: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
+    verification: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -125,6 +126,10 @@ class RunStore(Protocol):
     ) -> list[dict[str, Any]] | None: ...
 
     def append_log(self, run_id: str, log: dict[str, Any]) -> bool: ...
+
+    def store_verification(self, run_id: str, report: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def get_verification(self, run_id: str) -> dict[str, Any] | None: ...
 
     def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord: ...
 

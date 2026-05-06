@@ -4,6 +4,9 @@ import type {
   HealthResponse,
   LogsResponse,
   ReportResponse,
+  ReplayVerificationReport,
+  RunDiffRequest,
+  RunDiffResult,
   RunDetail,
   RunSummary,
   SnapshotsResponse,
@@ -88,6 +91,16 @@ export const tesApi = {
   listRuns: () => apiFetch<RunSummary[]>("/runs"),
   listWorkers: () => apiFetch<WorkerSummary[]>("/workers"),
   getRun: (runId: string) => apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}`),
+  verifyRun: (runId: string) =>
+    apiFetch<ReplayVerificationReport>(`/runs/${encodeURIComponent(runId)}/verify`, { method: "POST" }),
+  getVerification: (runId: string) =>
+    apiFetch<ReplayVerificationReport>(`/runs/${encodeURIComponent(runId)}/verification`),
+  diffRuns: (request: RunDiffRequest) =>
+    apiFetch<RunDiffResult>("/runs/diff", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
   getReport: (runId: string) => apiFetch<ReportResponse>(`/runs/${encodeURIComponent(runId)}/report`),
   getTimeline: (runId: string, query?: TimelineQuery) =>
     apiFetch<TimelineResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/timeline`, query)),

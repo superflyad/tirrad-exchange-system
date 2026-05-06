@@ -164,6 +164,21 @@ class InMemoryRunStore:
             record.logs.append(deepcopy(log))
             return True
 
+    def store_verification(self, run_id: str, report: dict[str, Any]) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._records.get(run_id)
+            if record is None:
+                return None
+            record.verification = deepcopy(report)
+            return deepcopy(record.verification)
+
+    def get_verification(self, run_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            record = self._records.get(run_id)
+            if record is None:
+                return None
+            return deepcopy(record.verification)
+
     def store_result(
         self,
         run_id: str,

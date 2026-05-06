@@ -90,7 +90,8 @@ Usage:
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
   ./${SCRIPT_NAME} sim <command>
-  ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH]
+  ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH] [--queue]
+  ./${SCRIPT_NAME} worker run [--worker-id ID] [--poll-interval SECONDS] [--max-jobs N] [--sqlite-path PATH] [--once]
   ./${SCRIPT_NAME} bench [preset]
 USAGE
 }
@@ -148,6 +149,10 @@ run_api_cli() {
   run_python_module sim.api.main "$@"
 }
 
+run_worker_cli() {
+  run_python_module sim.api.execution.worker "$@"
+}
+
 cmd="${1:-}"
 arg="${2:-}"
 
@@ -186,6 +191,10 @@ case "$cmd" in
   api)
     shift
     run_api_cli "$@"
+    ;;
+  worker)
+    shift
+    run_worker_cli "$@"
     ;;
   bench)
     run_bench "${2:-}"

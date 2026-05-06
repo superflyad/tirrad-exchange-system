@@ -16,6 +16,15 @@ export interface RunSummary {
   config: JsonObject;
   report_summary: JsonObject;
   error: string | null;
+  polling_url?: string | null;
+  stream_url?: string | null;
+}
+
+export interface WorkerSummary {
+  worker_id: string;
+  status: string;
+  updated_at: string;
+  current_run_id: string | null;
 }
 
 export interface RunDetail extends RunSummary {

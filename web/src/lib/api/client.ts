@@ -9,6 +9,7 @@ import type {
   SnapshotsResponse,
   TimelineCategory,
   TimelineResponse,
+  WorkerSummary,
 } from "@/types/api";
 
 export interface TimelineQuery {
@@ -82,6 +83,7 @@ export function streamRunUrl(runId: string, replayLimit = 100): string {
 export const tesApi = {
   health: () => apiFetch<HealthResponse>("/health"),
   listRuns: () => apiFetch<RunSummary[]>("/runs"),
+  listWorkers: () => apiFetch<WorkerSummary[]>("/workers"),
   getRun: (runId: string) => apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}`),
   getReport: (runId: string) => apiFetch<ReportResponse>(`/runs/${encodeURIComponent(runId)}/report`),
   getTimeline: (runId: string, query?: TimelineQuery) =>
@@ -94,4 +96,6 @@ export const tesApi = {
     apiFetch<AccountsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/accounts`, query)),
   getLogs: (runId: string, query?: CollectionQuery) =>
     apiFetch<LogsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/logs`, query)),
+  cancelRun: (runId: string) =>
+    apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
 };

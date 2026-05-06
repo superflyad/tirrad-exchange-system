@@ -21,6 +21,7 @@ from sim.api.models import (
     RunSummary,
     RunTimelineResponse,
     SessionRunRequest,
+    WorkerSummary,
 )
 from sim.api.services.replay_service import ReplayService
 from sim.api.services.run_service import RunService
@@ -41,13 +42,48 @@ def _stream_service(request: Request) -> StreamService:
     return request.app.state.stream_service
 
 
+def _queue(request: Request):
+    return getattr(request.app.state, "run_queue", None)
+
+
+def _use_queue(payload_mode: str | None, request: Request) -> bool:
+    if payload_mode == "sync":
+        return False
+    if payload_mode == "queued":
+        return True
+    return bool(getattr(request.app.state, "queue_enabled", False))
+
+
+def _queued_detail(detail: RunDetail) -> RunDetail:
+    return detail.model_copy(
+        update={
+            "polling_url": f"/runs/{detail.run_id}",
+            "stream_url": f"/runs/{detail.run_id}/stream",
+        }
+    )
+
+
 @router.post("/sessions/run", response_model=RunDetail)
 def run_session(payload: SessionRunRequest, request: Request) -> RunDetail:
+    if _use_queue(payload.mode, request):
+        queue = _queue(request)
+        if queue is None:
+            return _service(request).run_session(payload)
+        detail = _service(request).queue_session(payload)
+        queue.enqueue(detail.run_id)
+        return _queued_detail(detail)
     return _service(request).run_session(payload)
 
 
 @router.post("/backtests/run", response_model=RunDetail)
 def run_backtest(payload: BacktestRunRequest, request: Request) -> RunDetail:
+    if _use_queue(payload.mode, request):
+        queue = _queue(request)
+        if queue is None:
+            return _service(request).run_backtest(payload)
+        detail = _service(request).queue_backtest(payload)
+        queue.enqueue(detail.run_id)
+        return _queued_detail(detail)
     return _service(request).run_backtest(payload)
 
 
@@ -222,6 +258,22 @@ def replay_run(run_id: str, request: Request) -> RunReplayResponse:
 @router.get("/runs/{run_id}/summary", response_model=RunInspectionSummary)
 def summarize_run(run_id: str, request: Request) -> RunInspectionSummary:
     return _replay_service(request).summarize_run(run_id)
+
+
+@router.post("/runs/{run_id}/cancel", response_model=RunDetail)
+def cancel_run(run_id: str, request: Request) -> RunDetail:
+    queue = _queue(request)
+    if queue is not None:
+        queue.cancel_pending(run_id)
+    return _service(request).cancel_run(run_id)
+
+
+@router.get("/workers", response_model=list[WorkerSummary])
+def list_workers(request: Request) -> list[WorkerSummary]:
+    queue = _queue(request)
+    if queue is None:
+        return []
+    return [WorkerSummary(**worker.__dict__) for worker in queue.list_workers()]
 
 
 @router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)

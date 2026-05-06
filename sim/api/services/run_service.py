@@ -21,10 +21,73 @@ class RunService:
         self._store = store
         self._stream_service = stream_service
 
+    def queue_session(self, request: SessionRunRequest) -> RunDetail:
+        record = self._store.create_run(run_type="session", config=request.model_dump(exclude={"mode"}))
+        self._publish(record.run_id, "status", "run_queued", {"run_type": "session", "config": record.config})
+        return self._to_detail(record)
+
+    def queue_backtest(self, request: BacktestRunRequest) -> RunDetail:
+        record = self._store.create_run(run_type="backtest", config=request.model_dump(exclude={"mode"}))
+        self._publish(record.run_id, "status", "run_queued", {"run_type": "backtest", "config": record.config})
+        return self._to_detail(record)
+
+    def execute_pending_run(self, run_id: str) -> RunDetail:
+        record = self._require_run(run_id)
+        if record.status == "completed":
+            raise InvalidRequestError(f"run is already completed: {run_id}")
+        if record.status == "canceled":
+            raise InvalidRequestError(f"run is canceled: {run_id}")
+        if record.run_type == "session":
+            request = SessionRunRequest(**record.config)
+            return self._execute_existing(
+                record,
+                lambda claimed_run_id: run_session(
+                    request, run_id=claimed_run_id, progress_callback=self._progress_publisher(claimed_run_id)
+                ),
+            )
+        if record.run_type == "backtest":
+            request = BacktestRunRequest(**record.config)
+            return self._execute_existing(
+                record,
+                lambda claimed_run_id: run_backtest(
+                    request, run_id=claimed_run_id, progress_callback=self._progress_publisher(claimed_run_id)
+                ),
+            )
+        raise InvalidRequestError(f"unsupported run type: {record.run_type}")
+
+    def cancel_run(self, run_id: str) -> RunDetail:
+        record = self._require_run(run_id)
+        if record.status == "completed":
+            raise InvalidRequestError(f"completed run cannot be canceled: {run_id}")
+        if record.status == "canceled":
+            return self._to_detail(record)
+        now = datetime.now(UTC)
+        updated = self._store.update_run(
+            run_id,
+            status="canceled",
+            completed_at=now if record.status == "pending" else None,
+            error="canceled",
+        )
+        if updated is None:
+            raise RunNotFoundError(run_id)
+        self._store.append_log(
+            run_id,
+            {
+                "level": "warning",
+                "message": "run cancellation requested",
+                "status": record.status,
+                "timestamp": now.isoformat(),
+            },
+        )
+        self._publish(run_id, "status", "run_canceled", {"previous_status": record.status})
+        if record.status == "pending":
+            self._close_stream(run_id)
+        return self._to_detail(updated)
+
     def run_session(self, request: SessionRunRequest) -> RunDetail:
         return self._execute(
             "session",
-            request.model_dump(),
+            request.model_dump(exclude={"mode"}),
             lambda run_id: run_session(
                 request, run_id=run_id, progress_callback=self._progress_publisher(run_id)
             ),
@@ -33,7 +96,7 @@ class RunService:
     def run_backtest(self, request: BacktestRunRequest) -> RunDetail:
         return self._execute(
             "backtest",
-            request.model_dump(),
+            request.model_dump(exclude={"mode"}),
             lambda run_id: run_backtest(
                 request, run_id=run_id, progress_callback=self._progress_publisher(run_id)
             ),
@@ -110,10 +173,24 @@ class RunService:
         if self._stream_service is not None:
             self._stream_service.close(run_id)
 
+    def _execute_existing(
+        self, record: RunRecord, executor: Callable[[str], dict[str, Any]]
+    ) -> RunDetail:
+        return self._execute_record(record, record.run_type, record.config, executor)
+
     def _execute(
         self, run_type: str, config: dict[str, Any], executor: Callable[[str], dict[str, Any]]
     ) -> RunDetail:
         record = self._store.create_run(run_type=run_type, config=config)
+        return self._execute_record(record, run_type, config, executor)
+
+    def _execute_record(
+        self,
+        record: RunRecord,
+        run_type: str,
+        config: dict[str, Any],
+        executor: Callable[[str], dict[str, Any]],
+    ) -> RunDetail:
         now = datetime.now(UTC)
         self._store.update_run(record.run_id, status="running", started_at=now)
         self._publish(record.run_id, "status", "run_started", {"run_type": run_type, "config": config})

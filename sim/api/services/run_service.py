@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from collections.abc import Callable
 from typing import Any
 
 from sim.api.errors import InvalidRequestError, RunExecutionError, RunNotFoundError
 from sim.api.models import BacktestRunRequest, RunDetail, RunSummary, SessionRunRequest
 from sim.api.services.backtest_service import run_backtest
 from sim.api.services.session_service import run_session
-from sim.api.storage.in_memory import InMemoryRunStore, RunRecord
+from sim.api.storage import RunRecord, RunStore
 
 
 class RunService:
     """Coordinates run creation, synchronous execution, and result storage."""
 
-    def __init__(self, store: InMemoryRunStore) -> None:
+    def __init__(self, store: RunStore) -> None:
         self._store = store
 
     def run_session(self, request: SessionRunRequest) -> RunDetail:
@@ -31,22 +32,71 @@ class RunService:
         return self._to_detail(self._require_run(run_id))
 
     def get_report(self, run_id: str) -> dict[str, Any]:
-        return self._require_run(run_id).report
+        report = self._store.get_report(run_id)
+        if report is None:
+            raise RunNotFoundError(run_id)
+        return report
 
-    def get_events(self, run_id: str) -> list[dict[str, Any]]:
-        return self._require_run(run_id).events
+    def get_events(
+        self,
+        run_id: str,
+        *,
+        symbol: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        events = self._store.get_events(
+            run_id, symbol=symbol, event_type=event_type, limit=limit, offset=offset
+        )
+        if events is None:
+            raise RunNotFoundError(run_id)
+        return events
 
-    def get_snapshots(self, run_id: str) -> list[dict[str, Any]]:
-        return self._require_run(run_id).snapshots
+    def get_snapshots(
+        self,
+        run_id: str,
+        *,
+        symbol: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        snapshots = self._store.get_snapshots(run_id, symbol=symbol, limit=limit, offset=offset)
+        if snapshots is None:
+            raise RunNotFoundError(run_id)
+        return snapshots
 
-    def get_accounts(self, run_id: str) -> list[dict[str, Any]]:
-        return self._require_run(run_id).accounts
+    def get_accounts(
+        self,
+        run_id: str,
+        *,
+        account_id: str | None = None,
+        symbol: str | None = None,
+    ) -> list[dict[str, Any]]:
+        accounts = self._store.get_accounts(run_id, account_id=account_id, symbol=symbol)
+        if accounts is None:
+            raise RunNotFoundError(run_id)
+        return accounts
+
+    def get_logs(
+        self,
+        run_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        logs = self._store.get_logs(run_id, limit=limit, offset=offset)
+        if logs is None:
+            raise RunNotFoundError(run_id)
+        return logs
 
     def delete_run(self, run_id: str) -> None:
         if not self._store.delete_run(run_id):
             raise RunNotFoundError(run_id)
 
-    def _execute(self, run_type: str, config: dict[str, Any], executor: object) -> RunDetail:
+    def _execute(
+        self, run_type: str, config: dict[str, Any], executor: Callable[[], dict[str, Any]]
+    ) -> RunDetail:
         record = self._store.create_run(run_type=run_type, config=config)
         now = datetime.now(UTC)
         self._store.update_run(record.run_id, status="running", started_at=now)

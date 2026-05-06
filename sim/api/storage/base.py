@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from sim.api.models import RunStatus, RunType
+from sim.tes_benchmarks.models import BenchmarkComparison, BenchmarkRun
 
 
 @dataclass
@@ -28,6 +29,12 @@ class RunRecord:
     error: str | None = None
     verification: dict[str, Any] = field(default_factory=dict)
 
+
+@dataclass
+class BenchmarkRunRecord:
+    """Strict API-facing benchmark run stored by TES backends."""
+
+    benchmark: BenchmarkRun
 
 @dataclass
 class TournamentRecord:
@@ -159,3 +166,17 @@ class RunStore(Protocol):
     ) -> None: ...
 
     def list_tournament_children(self, tournament_id: str) -> list[dict[str, Any]] | None: ...
+
+    def store_benchmark_run(self, benchmark: BenchmarkRun) -> BenchmarkRun: ...
+
+    def list_benchmark_runs(self) -> list[BenchmarkRun]: ...
+
+    def get_benchmark_run(self, benchmark_id: str) -> BenchmarkRun | None: ...
+
+    def compare_benchmark_runs(
+        self,
+        baseline_id: str,
+        candidate_id: str,
+        *,
+        threshold_percent: float = 10.0,
+    ) -> BenchmarkComparison | None: ...

@@ -13,6 +13,12 @@ from uuid import uuid4
 
 from sim.api.models import RunStatus, RunType
 from sim.api.storage.base import RunRecord, TournamentRecord
+from sim.tes_benchmarks.models import (
+    BenchmarkComparison,
+    BenchmarkRun,
+    BenchmarkScenario,
+    compare_benchmark_runs,
+)
 
 _SCHEMA_VERSION = 1
 _DEFAULT_TIMEOUT_SECONDS = 5.0
@@ -453,6 +459,88 @@ class SQLiteRunStore:
             for row in rows
         ]
 
+
+    def store_benchmark_run(self, benchmark: BenchmarkRun) -> BenchmarkRun:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO benchmark_runs (
+                    benchmark_id, created_at, git_sha, machine_json, notes, config_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(benchmark_id) DO UPDATE SET
+                    created_at = excluded.created_at,
+                    git_sha = excluded.git_sha,
+                    machine_json = excluded.machine_json,
+                    notes = excluded.notes,
+                    config_json = excluded.config_json
+                """,
+                (
+                    benchmark.benchmark_id,
+                    _format_datetime(benchmark.created_at),
+                    benchmark.git_sha,
+                    _encode_json(benchmark.machine),
+                    benchmark.notes,
+                    _encode_json(benchmark.config),
+                ),
+            )
+            self._connection.execute(
+                "DELETE FROM benchmark_scenarios WHERE benchmark_id = ?",
+                (benchmark.benchmark_id,),
+            )
+            self._connection.executemany(
+                """
+                INSERT INTO benchmark_scenarios (
+                    benchmark_id, sequence, scenario_name, operation_count, elapsed_ms,
+                    ops_per_sec, notes, config_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        benchmark.benchmark_id,
+                        index,
+                        scenario.name,
+                        scenario.operation_count,
+                        scenario.elapsed_ms,
+                        scenario.ops_per_sec,
+                        scenario.notes,
+                        _encode_json(scenario.config),
+                    )
+                    for index, scenario in enumerate(benchmark.scenarios)
+                ],
+            )
+        stored = self.get_benchmark_run(benchmark.benchmark_id)
+        if stored is None:
+            raise RuntimeError(f"failed to store benchmark run: {benchmark.benchmark_id}")
+        return stored
+
+    def list_benchmark_runs(self) -> list[BenchmarkRun]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM benchmark_runs ORDER BY created_at ASC, benchmark_id ASC"
+            ).fetchall()
+        return [self._benchmark_from_row(row) for row in rows]
+
+    def get_benchmark_run(self, benchmark_id: str) -> BenchmarkRun | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM benchmark_runs WHERE benchmark_id = ?",
+                (benchmark_id,),
+            ).fetchone()
+        return self._benchmark_from_row(row) if row is not None else None
+
+    def compare_benchmark_runs(
+        self,
+        baseline_id: str,
+        candidate_id: str,
+        *,
+        threshold_percent: float = 10.0,
+    ) -> BenchmarkComparison | None:
+        baseline = self.get_benchmark_run(baseline_id)
+        candidate = self.get_benchmark_run(candidate_id)
+        if baseline is None or candidate is None:
+            return None
+        return compare_benchmark_runs(baseline, candidate, threshold_percent=threshold_percent)
+
     def close(self) -> None:
         with self._lock:
             self._connection.close()
@@ -545,6 +633,30 @@ class SQLiteRunStore:
             CREATE INDEX IF NOT EXISTS idx_run_snapshots_lookup ON run_snapshots(run_id, step, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_snapshots_symbol ON run_snapshots(run_id, symbol, step, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_accounts_lookup ON run_accounts(run_id, account_id, symbol);
+
+            CREATE TABLE IF NOT EXISTS benchmark_runs (
+                benchmark_id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                git_sha TEXT,
+                machine_json TEXT NOT NULL,
+                notes TEXT,
+                config_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS benchmark_scenarios (
+                benchmark_id TEXT NOT NULL REFERENCES benchmark_runs(benchmark_id) ON DELETE CASCADE,
+                sequence INTEGER NOT NULL,
+                scenario_name TEXT NOT NULL,
+                operation_count INTEGER NOT NULL,
+                elapsed_ms REAL NOT NULL,
+                ops_per_sec REAL NOT NULL,
+                notes TEXT,
+                config_json TEXT NOT NULL,
+                PRIMARY KEY (benchmark_id, sequence)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_benchmark_runs_created_at ON benchmark_runs(created_at);
+            CREATE INDEX IF NOT EXISTS idx_benchmark_scenarios_lookup ON benchmark_scenarios(benchmark_id, scenario_name);
             CREATE TABLE IF NOT EXISTS tournaments (
                 tournament_id TEXT PRIMARY KEY,
                 tournament_type TEXT NOT NULL,
@@ -572,6 +684,38 @@ class SQLiteRunStore:
             """
         )
         self._connection.commit()
+
+
+    def _benchmark_from_row(self, row: sqlite3.Row) -> BenchmarkRun:
+        benchmark_id = row["benchmark_id"]
+        with self._lock:
+            scenario_rows = self._connection.execute(
+                """
+                SELECT * FROM benchmark_scenarios
+                WHERE benchmark_id = ?
+                ORDER BY sequence ASC
+                """,
+                (benchmark_id,),
+            ).fetchall()
+        return BenchmarkRun(
+            benchmark_id=benchmark_id,
+            created_at=_parse_datetime(row["created_at"]),
+            git_sha=row["git_sha"],
+            machine=_decode_json(row["machine_json"], {}),
+            notes=row["notes"],
+            config=_decode_json(row["config_json"], {}),
+            scenarios=[
+                BenchmarkScenario(
+                    name=scenario_row["scenario_name"],
+                    operation_count=int(scenario_row["operation_count"]),
+                    elapsed_ms=float(scenario_row["elapsed_ms"]),
+                    ops_per_sec=float(scenario_row["ops_per_sec"]),
+                    notes=scenario_row["notes"],
+                    config=_decode_json(scenario_row["config_json"], {}),
+                )
+                for scenario_row in scenario_rows
+            ],
+        )
 
     def _tournament_from_row(self, row: sqlite3.Row) -> TournamentRecord:
         return TournamentRecord(

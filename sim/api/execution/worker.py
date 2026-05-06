@@ -10,6 +10,7 @@ from pathlib import Path
 
 from sim.api.execution.executor import RunExecutor
 from sim.api.execution.queue import SQLiteRunQueue
+from sim.api.services.benchmark_service import BenchmarkService
 from sim.api.services.run_service import RunService
 from sim.api.services.stream_service import StreamService
 from sim.api.services.tournament_service import TournamentService
@@ -108,7 +109,7 @@ def build_worker(*, sqlite_path: str | Path, worker_id: str, poll_interval: floa
     queue = SQLiteRunQueue(sqlite_path)
     return Worker(
         queue=queue,
-        executor=RunExecutor(run_service),
+        executor=RunExecutor(run_service, BenchmarkService(store)),
         run_service=run_service,
         tournament_service=TournamentService(store, run_service, queue),
         worker_id=worker_id,

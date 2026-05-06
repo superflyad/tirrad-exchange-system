@@ -1,4 +1,4 @@
-export type RunType = "session" | "backtest";
+export type RunType = "session" | "backtest" | "benchmark";
 export type TournamentType = "strategy_vs_strategy" | "strategy_vs_scenario" | "parameter_sweep" | "multi_symbol_sweep";
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "canceled";
 export type TimelineCategory = "command" | "event" | "snapshot" | "account" | "log";
@@ -6,6 +6,49 @@ export type StreamCategory = "status" | "progress" | "event" | "snapshot" | "acc
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
+
+export interface BenchmarkScenario {
+  name: string;
+  operation_count: number;
+  elapsed_ms: number;
+  ops_per_sec: number;
+  notes?: string | null;
+  config: JsonObject;
+}
+
+export interface BenchmarkRun {
+  benchmark_id: string;
+  created_at: string;
+  git_sha: string | null;
+  machine: JsonObject;
+  scenarios: BenchmarkScenario[];
+  notes?: string | null;
+  config: JsonObject;
+}
+
+export interface BenchmarkScenarioComparison {
+  name: string;
+  baseline_ops_per_sec: number | null;
+  candidate_ops_per_sec: number | null;
+  percent_delta: number | null;
+  regression: boolean;
+  improvement: boolean;
+  threshold_percent: number;
+}
+
+export interface BenchmarkComparison {
+  baseline_id: string;
+  candidate_id: string;
+  threshold_percent: number;
+  has_regression: boolean;
+  scenarios: BenchmarkScenarioComparison[];
+}
+
+export interface BenchmarkCompareRequest {
+  baseline_id?: string | null;
+  candidate_id?: string | null;
+  threshold_percent?: number;
+}
 
 export interface RunSummary {
   run_id: string;

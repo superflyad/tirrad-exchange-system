@@ -1,5 +1,8 @@
 import type {
   AccountsResponse,
+  BenchmarkCompareRequest,
+  BenchmarkComparison,
+  BenchmarkRun,
   EventsResponse,
   HealthResponse,
   LogsResponse,
@@ -88,6 +91,16 @@ export function streamRunUrl(runId: string, replayLimit = 100): string {
 
 export const tesApi = {
   health: () => apiFetch<HealthResponse>("/health"),
+  listBenchmarks: () => apiFetch<BenchmarkRun[]>("/benchmarks"),
+  getLatestBenchmark: () => apiFetch<BenchmarkRun>("/benchmarks/latest"),
+  compareBenchmarks: (request: BenchmarkCompareRequest) =>
+    apiFetch<BenchmarkComparison>("/benchmarks/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+  getLatestRegressions: (threshold_percent = 10) =>
+    apiFetch<BenchmarkComparison>(appendQuery("/benchmarks/regressions", { threshold_percent })),
   listRuns: () => apiFetch<RunSummary[]>("/runs"),
   listWorkers: () => apiFetch<WorkerSummary[]>("/workers"),
   getRun: (runId: string) => apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}`),

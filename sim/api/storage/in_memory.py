@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from sim.api.models import RunStatus, RunType
 from sim.api.storage.base import RunRecord, TournamentRecord
+from sim.tes_benchmarks.models import BenchmarkComparison, BenchmarkRun, compare_benchmark_runs
 
 
 class InMemoryRunStore:
@@ -23,6 +24,7 @@ class InMemoryRunStore:
         self._records: dict[str, RunRecord] = {}
         self._tournaments: dict[str, TournamentRecord] = {}
         self._tournament_children: dict[str, list[dict[str, Any]]] = {}
+        self._benchmarks: dict[str, BenchmarkRun] = {}
         self._lock = RLock()
 
     def create_run(self, *, run_type: RunType, config: dict[str, Any]) -> RunRecord:
@@ -200,6 +202,35 @@ class InMemoryRunStore:
             if logs is not None:
                 record.logs = deepcopy(logs)
             return deepcopy(record)
+
+
+    def store_benchmark_run(self, benchmark: BenchmarkRun) -> BenchmarkRun:
+        with self._lock:
+            self._benchmarks[benchmark.benchmark_id] = benchmark
+            return BenchmarkRun.from_dict(benchmark.to_dict())
+
+    def list_benchmark_runs(self) -> list[BenchmarkRun]:
+        with self._lock:
+            records = sorted(self._benchmarks.values(), key=lambda item: (item.created_at, item.benchmark_id))
+            return [BenchmarkRun.from_dict(record.to_dict()) for record in records]
+
+    def get_benchmark_run(self, benchmark_id: str) -> BenchmarkRun | None:
+        with self._lock:
+            record = self._benchmarks.get(benchmark_id)
+            return BenchmarkRun.from_dict(record.to_dict()) if record is not None else None
+
+    def compare_benchmark_runs(
+        self,
+        baseline_id: str,
+        candidate_id: str,
+        *,
+        threshold_percent: float = 10.0,
+    ) -> BenchmarkComparison | None:
+        baseline = self.get_benchmark_run(baseline_id)
+        candidate = self.get_benchmark_run(candidate_id)
+        if baseline is None or candidate is None:
+            return None
+        return compare_benchmark_runs(baseline, candidate, threshold_percent=threshold_percent)
 
     def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord:
         record = TournamentRecord(

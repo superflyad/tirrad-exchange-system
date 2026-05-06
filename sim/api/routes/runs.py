@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from sim.api.models import (
     BacktestRunRequest,
     RunAccountsResponse,
     RunDetail,
     RunEventsResponse,
+    RunLogsResponse,
     RunReportResponse,
     RunSnapshotsResponse,
     RunSummary,
@@ -49,18 +50,57 @@ def get_report(run_id: str, request: Request) -> RunReportResponse:
 
 
 @router.get("/runs/{run_id}/events", response_model=RunEventsResponse)
-def get_events(run_id: str, request: Request) -> RunEventsResponse:
-    return RunEventsResponse(run_id=run_id, events=_service(request).get_events(run_id))
+def get_events(
+    run_id: str,
+    request: Request,
+    symbol: str | None = None,
+    event_type: str | None = None,
+    limit: int | None = Query(default=None, ge=0),
+    offset: int = Query(default=0, ge=0),
+) -> RunEventsResponse:
+    return RunEventsResponse(
+        run_id=run_id,
+        events=_service(request).get_events(
+            run_id, symbol=symbol, event_type=event_type, limit=limit, offset=offset
+        ),
+    )
 
 
 @router.get("/runs/{run_id}/snapshots", response_model=RunSnapshotsResponse)
-def get_snapshots(run_id: str, request: Request) -> RunSnapshotsResponse:
-    return RunSnapshotsResponse(run_id=run_id, snapshots=_service(request).get_snapshots(run_id))
+def get_snapshots(
+    run_id: str,
+    request: Request,
+    symbol: str | None = None,
+    limit: int | None = Query(default=None, ge=0),
+    offset: int = Query(default=0, ge=0),
+) -> RunSnapshotsResponse:
+    return RunSnapshotsResponse(
+        run_id=run_id,
+        snapshots=_service(request).get_snapshots(run_id, symbol=symbol, limit=limit, offset=offset),
+    )
 
 
 @router.get("/runs/{run_id}/accounts", response_model=RunAccountsResponse)
-def get_accounts(run_id: str, request: Request) -> RunAccountsResponse:
-    return RunAccountsResponse(run_id=run_id, accounts=_service(request).get_accounts(run_id))
+def get_accounts(
+    run_id: str,
+    request: Request,
+    account_id: str | None = None,
+    symbol: str | None = None,
+) -> RunAccountsResponse:
+    return RunAccountsResponse(
+        run_id=run_id,
+        accounts=_service(request).get_accounts(run_id, account_id=account_id, symbol=symbol),
+    )
+
+
+@router.get("/runs/{run_id}/logs", response_model=RunLogsResponse)
+def get_logs(
+    run_id: str,
+    request: Request,
+    limit: int | None = Query(default=None, ge=0),
+    offset: int = Query(default=0, ge=0),
+) -> RunLogsResponse:
+    return RunLogsResponse(run_id=run_id, logs=_service(request).get_logs(run_id, limit=limit, offset=offset))
 
 
 @router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)

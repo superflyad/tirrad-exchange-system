@@ -96,6 +96,11 @@ class RunAccountsResponse(StrictApiModel):
     accounts: list[dict[str, Any]]
 
 
+class RunLogsResponse(StrictApiModel):
+    run_id: str
+    logs: list[dict[str, Any]]
+
+
 class ErrorPayload(StrictApiModel):
     code: str
     message: str

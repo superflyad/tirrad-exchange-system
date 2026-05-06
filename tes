@@ -90,7 +90,7 @@ Usage:
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
   ./${SCRIPT_NAME} sim <command>
-  ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload]
+  ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH]
   ./${SCRIPT_NAME} bench [preset]
 USAGE
 }

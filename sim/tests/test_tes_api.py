@@ -3,10 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from sim.api.app import create_app
+from sim.api.storage.in_memory import InMemoryRunStore
 
 
 def _client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(create_app(InMemoryRunStore()))
 
 
 def _session_payload() -> dict[str, object]:

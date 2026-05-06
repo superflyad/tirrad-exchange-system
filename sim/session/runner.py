@@ -11,6 +11,7 @@ from sim.session.models import MarketSessionConfig, MarketSessionReport, MarketS
 from sim.session.participants import MarketParticipant
 from sim.session.scenarios import get_market_scenario
 from sim.tes_engine_adapter import execute_command
+from sim.tes_models import parse_events
 
 
 @dataclass
@@ -36,6 +37,9 @@ class MarketSessionRunner:
         session_positions: dict[str, int] = {s: 0 for s in self.config.symbols}
 
         latest_mid: dict[str, float] = {s: 0.0 for s in self.config.symbols}
+        if scenario.opening_auction_steps > 0:
+            for symbol in self.config.symbols:
+                engine.set_trading_phase(symbol, "OpeningAuction")
         for step in range(self.config.steps):
             for symbol in self.config.symbols:
                 drift = 1 if self.config.scenario == "trending_up" else -1 if self.config.scenario == "trending_down" else 0
@@ -56,6 +60,9 @@ class MarketSessionRunner:
                                 if event.type == "TradeExecuted":
                                     session_positions[symbol] = session_positions.get(symbol, 0) + sign * event.data.qty
                                     session_cash -= sign * event.data.price * event.data.qty
+
+                if scenario.opening_auction_steps > 0 and step == scenario.opening_auction_steps - 1:
+                    step_events.extend(parse_events(engine.uncross(symbol)))
 
                 snapshot = engine.snapshot(self.config.depth_levels, symbol)
                 snapshots.append({"step": step, "symbol": symbol, "snapshot": snapshot})

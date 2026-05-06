@@ -38,6 +38,7 @@ add_executable(tes_engine_tests
     tests/test_replay_log.cpp
     tests/test_accounting.cpp
     tests/test_market_data.cpp
+    tests/test_auction.cpp
 )
 
 target_include_directories(tes_engine_tests

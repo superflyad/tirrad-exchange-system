@@ -26,6 +26,21 @@ namespace {
     return "SELL";
 }
 
+[[nodiscard]] std::string trading_phase_to_string(tes::TradingPhase phase) {
+    if (phase == tes::TradingPhase::Continuous) return "Continuous";
+    if (phase == tes::TradingPhase::OpeningAuction) return "OpeningAuction";
+    if (phase == tes::TradingPhase::ClosingAuction) return "ClosingAuction";
+    return "Halted";
+}
+
+[[nodiscard]] tes::TradingPhase trading_phase_from_string(const std::string& phase) {
+    if (phase == "Continuous") return tes::TradingPhase::Continuous;
+    if (phase == "OpeningAuction") return tes::TradingPhase::OpeningAuction;
+    if (phase == "ClosingAuction") return tes::TradingPhase::ClosingAuction;
+    if (phase == "Halted") return tes::TradingPhase::Halted;
+    throw std::invalid_argument("phase must be Continuous, OpeningAuction, ClosingAuction, or Halted");
+}
+
 [[nodiscard]] std::string reject_reason_to_string(tes::RejectReason reason) {
     if (reason == tes::RejectReason::InvalidPrice) return "InvalidPrice";
     if (reason == tes::RejectReason::InvalidQuantity) return "InvalidQuantity";
@@ -157,7 +172,7 @@ namespace {
                 data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
-            } else {
+            } else if constexpr (std::is_same_v<T, tes::TopOfBook>) {
                 py::dict out;
                 out["type"] = "TopOfBook";
                 py::dict data;
@@ -174,6 +189,18 @@ namespace {
                 data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::AuctionStarted>) {
+                py::dict out; out["type"] = "AuctionStarted"; py::dict data;
+                data["symbol"] = evt.symbol; data["phase"] = trading_phase_to_string(evt.phase); out["data"] = data; return out;
+            } else if constexpr (std::is_same_v<T, tes::AuctionEnded>) {
+                py::dict out; out["type"] = "AuctionEnded"; py::dict data;
+                data["symbol"] = evt.symbol; data["phase"] = trading_phase_to_string(evt.phase); out["data"] = data; return out;
+            } else if constexpr (std::is_same_v<T, tes::AuctionUncross>) {
+                py::dict out; out["type"] = "AuctionUncross"; py::dict data;
+                data["symbol"] = evt.symbol; data["price"] = evt.price.ticks; data["qty"] = evt.qty.value; data["imbalance"] = evt.imbalance; out["data"] = data; return out;
+            } else {
+                py::dict out; out["type"] = "IndicativePriceUpdated"; py::dict data;
+                data["symbol"] = evt.symbol; data["price"] = evt.price.has_value() ? py::cast(evt.price->ticks) : py::none(); data["qty"] = evt.qty.value; data["imbalance"] = evt.imbalance; out["data"] = data; return out;
             }
         },
         event);
@@ -372,6 +399,13 @@ PYBIND11_MODULE(tes_engine, m) {
         .value("FOK", tes::TimeInForce::Fok)
         .export_values();
 
+    py::enum_<tes::TradingPhase>(m, "TradingPhase")
+        .value("CONTINUOUS", tes::TradingPhase::Continuous)
+        .value("OPENING_AUCTION", tes::TradingPhase::OpeningAuction)
+        .value("CLOSING_AUCTION", tes::TradingPhase::ClosingAuction)
+        .value("HALTED", tes::TradingPhase::Halted)
+        .export_values();
+
 
     py::class_<tes::MarketDataRecord>(m, "MarketDataRecord")
         .def_property_readonly("symbol", [](const tes::MarketDataRecord& self) { return self.symbol; })
@@ -554,6 +588,26 @@ PYBIND11_MODULE(tes_engine, m) {
                  return performance_snapshot_to_py(self.performance_snapshot(account_id));
              },
              py::arg("account_id"))
+.def("set_trading_phase",
+             [](tes::MatchingEngine& self, const std::string& symbol, const std::string& phase) {
+                 return events_to_dicts(self.set_trading_phase(symbol, trading_phase_from_string(phase)));
+             },
+             py::arg("symbol"), py::arg("phase"))
+        .def("trading_phase",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { return trading_phase_to_string(self.trading_phase(symbol)); },
+             py::arg("symbol") = tes::kDefaultSymbol)
+        .def("indicative_price",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { const auto price = self.indicative_price(symbol); return price.has_value() ? py::cast(price->ticks) : py::none(); },
+             py::arg("symbol") = tes::kDefaultSymbol)
+        .def("indicative_volume",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { return self.indicative_volume(symbol).value; },
+             py::arg("symbol") = tes::kDefaultSymbol)
+        .def("auction_imbalance",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { return self.auction_imbalance(symbol); },
+             py::arg("symbol") = tes::kDefaultSymbol)
+        .def("uncross",
+             [](tes::MatchingEngine& self, const std::string& symbol) { return events_to_dicts(self.uncross(symbol)); },
+             py::arg("symbol") = tes::kDefaultSymbol)
 .def("sequence_number",
              [](const tes::MatchingEngine& self, const std::string& symbol) { return self.sequence_number(symbol); },
              py::arg("symbol") = tes::kDefaultSymbol);

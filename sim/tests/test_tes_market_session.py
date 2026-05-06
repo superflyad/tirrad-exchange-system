@@ -108,3 +108,27 @@ def test_progress_interval_respected(capsys: object) -> None:
     assert "step 10/21" in out
     assert "step 20/21" in out
     assert "step 11/21" not in out
+
+
+def test_opening_auction_session_scenario_runs() -> None:
+    from sim.session.models import MarketSessionConfig
+    from sim.session.runner import MarketSessionRunner
+
+    config = MarketSessionConfig(
+        scenario="opening_auction",
+        steps=2,
+        symbols=("TES",),
+        seed=7,
+        initial_price=100,
+        volatility=0.01,
+        spread_width=2,
+        min_order_size=1,
+        max_order_size=2,
+        probability_market_order=0.0,
+        probability_cancel_replace=0.0,
+        participant_count=3,
+        depth_levels=3,
+    )
+    result = MarketSessionRunner(config).run()
+    assert result.report.total_steps == 2
+    assert result.step_summaries

@@ -56,8 +56,10 @@ bool events_equal(const tes::Event& left, const tes::Event& right) {
                 return lhs.id == rhs.id && lhs.resulting_order_id == rhs.resulting_order_id && lhs.side == rhs.side &&
                        lhs.stop_price.ticks == rhs.stop_price.ticks && lhs.qty.value == rhs.qty.value &&
                        lhs.limit_price == rhs.limit_price && lhs.symbol == rhs.symbol;
-            } else {
+            } else if constexpr (std::is_same_v<L, tes::TopOfBook>) {
                 return lhs.best_bid == rhs.best_bid && lhs.best_ask == rhs.best_ask && lhs.symbol == rhs.symbol;
+            } else {
+                return lhs == rhs;
             }
         },
         left, right);
@@ -192,4 +194,25 @@ TEST_CASE("replay serializes and replays symbol-aware commands and events") {
     CHECK(std::get<tes::OrderAccepted>(replayed[0].front()).symbol == "AAA");
     REQUIRE(std::holds_alternative<tes::OrderAccepted>(replayed[1].front()));
     CHECK(std::get<tes::OrderAccepted>(replayed[1].front()).symbol == "BBB");
+}
+
+TEST_CASE("replay log replays auction phase and uncross deterministically") {
+    tes::ReplayLog log;
+    log.record(tes::SetTradingPhaseCommand{"DEFAULT", tes::TradingPhase::OpeningAuction},
+               {tes::AuctionStarted{"DEFAULT", tes::TradingPhase::OpeningAuction}});
+    log.record(tes::LimitOrderCommand{tes::Side::Ask, tes::Price{100}, tes::Qty{2}},
+               {tes::OrderAccepted{1, tes::Side::Ask, tes::Price{100}, tes::Qty{2}}});
+    log.record(tes::LimitOrderCommand{tes::Side::Bid, tes::Price{101}, tes::Qty{2}},
+               {tes::OrderAccepted{2, tes::Side::Bid, tes::Price{101}, tes::Qty{2}}});
+    log.record(tes::AuctionUncrossCommand{"DEFAULT"},
+               {tes::AuctionUncross{"DEFAULT", tes::Price{100}, tes::Qty{2}, 0}});
+
+    const auto replayed = tes::replay_commands(log.entries());
+    REQUIRE(replayed.size() == 4);
+    CHECK(std::holds_alternative<tes::AuctionStarted>(replayed[0][0]));
+    CHECK(std::holds_alternative<tes::OrderAccepted>(replayed[1][0]));
+    CHECK(std::holds_alternative<tes::OrderAccepted>(replayed[2][0]));
+    CHECK(std::holds_alternative<tes::AuctionUncross>(replayed[3][0]));
+    CHECK(std::get<tes::AuctionUncross>(replayed[3][0]).qty.value == 2);
+    CHECK(collect_trades(replayed[3]).size() == 1);
 }

@@ -92,6 +92,16 @@ class OrderBook {
         return side == Side::Bid ? fill_best_from_levels(bids, qty) : fill_best_from_levels(asks, qty);
     }
 
+    [[nodiscard]] std::optional<FillResult> fill_best_at_or_better(Side side, Price auction_price, Qty qty) {
+        if (!is_valid_qty(qty)) return std::nullopt;
+        if (side == Side::Bid) {
+            if (bids.empty() || bids.begin()->first.ticks < auction_price.ticks) return std::nullopt;
+            return fill_best_from_levels(bids, qty);
+        }
+        if (asks.empty() || asks.begin()->first.ticks > auction_price.ticks) return std::nullopt;
+        return fill_best_from_levels(asks, qty);
+    }
+
     [[nodiscard]] bool validate_invariants() const {
         std::size_t total_live_orders = 0;
         const auto validate_side = [this, &total_live_orders](const auto& levels, Side side) {

@@ -100,7 +100,36 @@ struct TopOfBook {
     Symbol symbol{kDefaultSymbol};
 };
 
+struct AuctionStarted {
+    Symbol symbol{kDefaultSymbol};
+    TradingPhase phase{TradingPhase::OpeningAuction};
+    [[nodiscard]] bool operator==(const AuctionStarted&) const = default;
+};
+
+struct AuctionEnded {
+    Symbol symbol{kDefaultSymbol};
+    TradingPhase phase{TradingPhase::Continuous};
+    [[nodiscard]] bool operator==(const AuctionEnded&) const = default;
+};
+
+struct AuctionUncross {
+    Symbol symbol{kDefaultSymbol};
+    Price price{};
+    Qty qty{};
+    std::int64_t imbalance{0};
+    [[nodiscard]] bool operator==(const AuctionUncross&) const = default;
+};
+
+struct IndicativePriceUpdated {
+    Symbol symbol{kDefaultSymbol};
+    std::optional<Price> price;
+    Qty qty{};
+    std::int64_t imbalance{0};
+    [[nodiscard]] bool operator==(const IndicativePriceUpdated&) const = default;
+};
+
 using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
-                           OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook>;
+                           OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook, AuctionStarted,
+                           AuctionEnded, AuctionUncross, IndicativePriceUpdated>;
 
 }  // namespace tes

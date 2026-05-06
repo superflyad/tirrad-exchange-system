@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
 DEFAULT_SYMBOL = "DEFAULT"
+TradingPhaseLiteral: TypeAlias = Literal["Continuous", "OpeningAuction", "ClosingAuction", "Halted"]
 RejectReasonLiteral: TypeAlias = Literal[
     "InvalidPrice",
     "InvalidQuantity",
@@ -109,6 +110,28 @@ class TopOfBookData:
 
 
 @dataclass(frozen=True)
+class AuctionPhaseData:
+    symbol: str
+    phase: TradingPhaseLiteral
+
+
+@dataclass(frozen=True)
+class AuctionUncrossData:
+    symbol: str
+    price: int
+    qty: int
+    imbalance: int
+
+
+@dataclass(frozen=True)
+class IndicativePriceUpdatedData:
+    symbol: str
+    price: int | None
+    qty: int
+    imbalance: int
+
+
+@dataclass(frozen=True)
 class OrderAccepted:
     type: Literal["OrderAccepted"]
     data: OrderAcceptedData
@@ -174,6 +197,30 @@ class TopOfBook:
     data: TopOfBookData
 
 
+@dataclass(frozen=True)
+class AuctionStarted:
+    type: Literal["AuctionStarted"]
+    data: AuctionPhaseData
+
+
+@dataclass(frozen=True)
+class AuctionEnded:
+    type: Literal["AuctionEnded"]
+    data: AuctionPhaseData
+
+
+@dataclass(frozen=True)
+class AuctionUncross:
+    type: Literal["AuctionUncross"]
+    data: AuctionUncrossData
+
+
+@dataclass(frozen=True)
+class IndicativePriceUpdated:
+    type: Literal["IndicativePriceUpdated"]
+    data: IndicativePriceUpdatedData
+
+
 TesEngineEvent: TypeAlias = (
     OrderAccepted
     | OrderRejected
@@ -186,6 +233,10 @@ TesEngineEvent: TypeAlias = (
     | StopOrderAccepted
     | StopOrderTriggered
     | TopOfBook
+    | AuctionStarted
+    | AuctionEnded
+    | AuctionUncross
+    | IndicativePriceUpdated
 )
 
 # Backward-compatible alias for historical naming.
@@ -236,6 +287,12 @@ def _optional_symbol(data: dict[str, Any]) -> str:
 def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     if value not in {"BUY", "SELL"}:
         raise ValueError("side must be either 'BUY' or 'SELL'")
+    return value
+
+
+def _require_trading_phase(value: Any) -> TradingPhaseLiteral:
+    if value not in {"Continuous", "OpeningAuction", "ClosingAuction", "Halted"}:
+        raise ValueError("phase must be one of: Continuous, OpeningAuction, ClosingAuction, Halted")
     return value
 
 
@@ -397,6 +454,45 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
         return OrderExpired(
             type="OrderExpired",
             data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id"), symbol=_optional_symbol(data)),
+        )
+
+
+    if event_type == "AuctionStarted":
+        _require_exact_keys(data, {"symbol", "phase"}, "AuctionStarted.data")
+        return AuctionStarted(
+            type="AuctionStarted",
+            data=AuctionPhaseData(symbol=_require_symbol(data["symbol"]), phase=_require_trading_phase(data["phase"])),
+        )
+
+    if event_type == "AuctionEnded":
+        _require_exact_keys(data, {"symbol", "phase"}, "AuctionEnded.data")
+        return AuctionEnded(
+            type="AuctionEnded",
+            data=AuctionPhaseData(symbol=_require_symbol(data["symbol"]), phase=_require_trading_phase(data["phase"])),
+        )
+
+    if event_type == "AuctionUncross":
+        _require_exact_keys(data, {"symbol", "price", "qty", "imbalance"}, "AuctionUncross.data")
+        return AuctionUncross(
+            type="AuctionUncross",
+            data=AuctionUncrossData(
+                symbol=_require_symbol(data["symbol"]),
+                price=_require_int(data["price"], "price"),
+                qty=_require_int(data["qty"], "qty"),
+                imbalance=_require_int(data["imbalance"], "imbalance"),
+            ),
+        )
+
+    if event_type == "IndicativePriceUpdated":
+        _require_exact_keys(data, {"symbol", "price", "qty", "imbalance"}, "IndicativePriceUpdated.data")
+        return IndicativePriceUpdated(
+            type="IndicativePriceUpdated",
+            data=IndicativePriceUpdatedData(
+                symbol=_require_symbol(data["symbol"]),
+                price=_require_optional_int(data["price"], "price"),
+                qty=_require_int(data["qty"], "qty"),
+                imbalance=_require_int(data["imbalance"], "imbalance"),
+            ),
         )
 
     raise ValueError(f"unknown event type: {event_type}")

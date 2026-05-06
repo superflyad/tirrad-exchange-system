@@ -8,9 +8,11 @@ from sim.tes_models.commands import (
     LimitOrderCommand,
     MarketOrderCommand,
     ReplaceOrderCommand,
+    SetTradingPhaseCommand,
     StopLimitOrderCommand,
     StopOrderCommand,
     TesCommand,
+    UncrossAuctionCommand,
 )
 
 
@@ -40,6 +42,12 @@ def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
 
     if isinstance(command, ReplaceOrderCommand):
         return parse_events(engine.replace_order(command.order_id, command.price, command.qty))
+
+    if isinstance(command, SetTradingPhaseCommand):
+        return parse_events(engine.set_trading_phase(command.symbol, command.phase))
+
+    if isinstance(command, UncrossAuctionCommand):
+        return parse_events(engine.uncross(command.symbol))
 
     raise TypeError(f"unsupported command type: {type(command).__name__}")
 

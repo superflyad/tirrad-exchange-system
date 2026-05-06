@@ -15,6 +15,7 @@ inline constexpr const char* kDefaultSymbol = "DEFAULT";
 enum class Side { Bid, Ask };
 enum class OrderType { Limit, Market, StopMarket, StopLimit };
 enum class TimeInForce { Gtc, Ioc, Fok };
+enum class TradingPhase { Continuous, OpeningAuction, ClosingAuction, Halted };
 
 struct Price {
     std::int64_t ticks;
@@ -24,6 +25,7 @@ struct Price {
 
 struct Qty {
     std::int64_t value;
+    [[nodiscard]] constexpr bool operator==(const Qty&) const = default;
 };
 
 [[nodiscard]] constexpr bool is_valid_price(Price price) {

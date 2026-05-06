@@ -70,3 +70,34 @@ def test_python_stop_order_smoke() -> None:
     events = engine.place_limit_order("Bid", 101, 3, symbol="AAA")
     assert any(event["type"] == "StopOrderTriggered" for event in events)
     assert any(event["type"] == "TradeExecuted" for event in events)
+
+
+def test_python_auction_phase_and_indicative_apis() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    events = engine.set_trading_phase("AUC", "OpeningAuction")
+    assert engine.trading_phase("AUC") == "OpeningAuction"
+    assert events[0]["type"] == "AuctionStarted"
+
+    engine.place_limit_order("Ask", 100, 5, symbol="AUC")
+    engine.place_limit_order("Bid", 105, 3, symbol="AUC")
+
+    assert engine.indicative_price("AUC") == 100
+    assert engine.indicative_volume("AUC") == 3
+    assert engine.auction_imbalance("AUC") == -2
+
+
+def test_python_auction_flow_smoke() -> None:
+    import tes_engine
+
+    engine = tes_engine.MatchingEngine()
+    engine.set_trading_phase("AUC", "OpeningAuction")
+    buy_events = engine.place_limit_order("Bid", 105, 3, symbol="AUC")
+    sell_events = engine.place_limit_order("Ask", 100, 3, symbol="AUC")
+    assert not any(event["type"] == "TradeExecuted" for event in buy_events + sell_events)
+
+    uncross_events = parse_events(engine.uncross("AUC"))
+    assert any(event.type == "AuctionUncross" for event in uncross_events)
+    assert any(event.type == "TradeExecuted" for event in uncross_events)
+    assert engine.trading_phase("AUC") == "Continuous"

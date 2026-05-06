@@ -317,6 +317,232 @@ std::optional<AccountId> MatchingEngine::order_owner(OrderId id) const {
     return std::nullopt;
 }
 
+
+TradingPhase MatchingEngine::trading_phase(const Symbol& symbol) const {
+    const auto it = trading_phases_by_symbol_.find(symbol);
+    return it == trading_phases_by_symbol_.end() ? TradingPhase::Continuous : it->second;
+}
+
+std::vector<Event> MatchingEngine::set_trading_phase(const Symbol& symbol, TradingPhase phase) {
+    const TradingPhase previous = trading_phase(symbol);
+    trading_phases_by_symbol_[symbol] = phase;
+    std::vector<Event> events;
+    if (previous == phase) {
+        return events;
+    }
+    if (phase == TradingPhase::OpeningAuction || phase == TradingPhase::ClosingAuction) {
+        events.emplace_back(AuctionStarted{symbol, phase});
+        const AuctionIndicative indicative = compute_auction_indicative(symbol);
+        events.emplace_back(IndicativePriceUpdated{symbol, indicative.price, indicative.qty, indicative.imbalance});
+    } else if (previous == TradingPhase::OpeningAuction || previous == TradingPhase::ClosingAuction) {
+        events.emplace_back(AuctionEnded{symbol, phase});
+    }
+    track_events(events);
+    return events;
+}
+
+MatchingEngine::AuctionIndicative MatchingEngine::compute_auction_indicative(const Symbol& symbol) const {
+    const OrderBook* book = find_book(symbol);
+    if (book == nullptr) return {};
+    const OrderBook::Depth depth = book->depth(std::numeric_limits<std::size_t>::max());
+    std::vector<Price> candidates;
+    candidates.reserve(depth.bids.size() + depth.asks.size());
+    for (const auto& level : depth.bids) candidates.push_back(level.price);
+    for (const auto& level : depth.asks) candidates.push_back(level.price);
+    if (candidates.empty()) return {};
+    std::sort(candidates.begin(), candidates.end(), [](Price a, Price b) { return a.ticks < b.ticks; });
+    candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+
+    const auto reference_it = latest_mark_by_symbol_.find(symbol);
+    const std::optional<std::int64_t> reference = reference_it == latest_mark_by_symbol_.end()
+        ? std::nullopt
+        : std::optional<std::int64_t>{static_cast<std::int64_t>(std::llround(reference_it->second))};
+
+    AuctionIndicative best;
+    bool have_best = false;
+    for (const Price candidate : candidates) {
+        std::int64_t bid_qty = 0;
+        std::int64_t ask_qty = 0;
+        for (const auto& level : depth.bids) {
+            if (level.price.ticks < candidate.ticks) break;
+            bid_qty += level.qty.value;
+        }
+        for (const auto& level : depth.asks) {
+            if (level.price.ticks > candidate.ticks) break;
+            ask_qty += level.qty.value;
+        }
+        const std::int64_t matched = std::min(bid_qty, ask_qty);
+        const std::int64_t imbalance = bid_qty - ask_qty;
+        if (matched <= 0) continue;
+        const std::int64_t abs_imbalance = std::llabs(imbalance);
+        bool better = !have_best || matched > best.qty.value ||
+                      (matched == best.qty.value && abs_imbalance < std::llabs(best.imbalance));
+        if (!better && have_best && matched == best.qty.value && abs_imbalance == std::llabs(best.imbalance) && reference.has_value()) {
+            const std::int64_t current_distance = std::llabs(candidate.ticks - *reference);
+            const std::int64_t best_distance = std::llabs(best.price->ticks - *reference);
+            better = current_distance < best_distance;
+        }
+        if (!better && have_best && matched == best.qty.value && abs_imbalance == std::llabs(best.imbalance)) {
+            const bool reference_tied = !reference.has_value() ||
+                std::llabs(candidate.ticks - *reference) == std::llabs(best.price->ticks - *reference);
+            better = reference_tied && candidate.ticks < best.price->ticks;
+        }
+        if (better) {
+            best = AuctionIndicative{candidate, Qty{matched}, imbalance};
+            have_best = true;
+        }
+    }
+    return best;
+}
+
+std::optional<Price> MatchingEngine::indicative_price(const Symbol& symbol) const { return compute_auction_indicative(symbol).price; }
+Qty MatchingEngine::indicative_volume(const Symbol& symbol) const { return compute_auction_indicative(symbol).qty; }
+std::int64_t MatchingEngine::auction_imbalance(const Symbol& symbol) const { return compute_auction_indicative(symbol).imbalance; }
+
+std::vector<Event> MatchingEngine::rest_limit_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty) {
+    AccountSnapshot& account = accounts_[account_id];
+    OrderBook& book = book_for(symbol);
+    std::vector<Event> events = book.add_limit_order(Order{id, side, price, qty});
+    for (Event& event : events) {
+        if (std::holds_alternative<OrderAccepted>(event)) {
+            auto accepted = std::get<OrderAccepted>(event);
+            accepted.symbol = symbol;
+            event = accepted;
+        } else if (std::holds_alternative<TopOfBook>(event)) {
+            auto top = std::get<TopOfBook>(event);
+            top.symbol = symbol;
+            event = top;
+        }
+    }
+    order_ownership_by_id_[id] = {account_id, symbol, side, price, qty};
+    if (side == Side::Bid) {
+        const std::int64_t reserve_notional = price.ticks * qty.value;
+        const std::int64_t reserve_fee = std::max(fee_for_notional(reserve_notional, false), fee_for_notional(reserve_notional, true));
+        const std::int64_t reserve = buy_reserve(account_id, symbol, price, qty, reserve_fee);
+        account.reserved_cash += reserve;
+        reserved_cash_by_order_id_[id] = reserve;
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, reserve, 0, id, std::nullopt});
+    } else {
+        const std::int64_t available_long = std::max<std::int64_t>(0, account.position_qty_by_symbol[symbol] - account.reserved_qty_by_symbol[symbol]);
+        const std::int64_t long_reserve = std::min(qty.value, available_long);
+        const std::int64_t short_reserve_qty = qty.value - long_reserve;
+        if (long_reserve > 0) {
+            account.reserved_qty_by_symbol[symbol] += long_reserve;
+            reserved_qty_by_order_id_[id] = long_reserve;
+        }
+        const std::int64_t short_reserve = short_margin_reserve(account_id, symbol, price, short_reserve_qty);
+        if (short_reserve > 0) {
+            account.reserved_short_margin += short_reserve;
+            reserved_short_margin_by_order_id_[id] = short_reserve;
+        }
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_accepted_reserve", 0, 0, short_reserve, long_reserve, id, std::nullopt});
+    }
+    if (trading_phase(symbol) == TradingPhase::OpeningAuction || trading_phase(symbol) == TradingPhase::ClosingAuction) {
+        const AuctionIndicative indicative = compute_auction_indicative(symbol);
+        events.emplace_back(IndicativePriceUpdated{symbol, indicative.price, indicative.qty, indicative.imbalance});
+    }
+    return events;
+}
+
+void MatchingEngine::settle_auction_trade(const Symbol& symbol, OrderId bid_id, OrderId ask_id, Price price, Qty qty, std::vector<Event>& events) {
+    auto bid_owner_it = order_ownership_by_id_.find(bid_id);
+    auto ask_owner_it = order_ownership_by_id_.find(ask_id);
+    const AccountId bid_account_id = bid_owner_it == order_ownership_by_id_.end() ? kDefaultAccountId : bid_owner_it->second.account_id;
+    const AccountId ask_account_id = ask_owner_it == order_ownership_by_id_.end() ? kDefaultAccountId : ask_owner_it->second.account_id;
+    const std::int64_t bid_qty_before = bid_owner_it == order_ownership_by_id_.end() ? qty.value : bid_owner_it->second.qty.value;
+    const std::int64_t ask_qty_before = ask_owner_it == order_ownership_by_id_.end() ? qty.value : ask_owner_it->second.qty.value;
+    AccountSnapshot& bid_account = accounts_[bid_account_id];
+    AccountSnapshot& ask_account = accounts_[ask_account_id];
+    const std::int64_t notional = price.ticks * qty.value;
+    const std::int64_t bid_fee = fee_for_notional(notional, false);
+    const std::int64_t ask_fee = fee_for_notional(notional, true);
+
+    events.emplace_back(TradeExecuted{bid_id, ask_id, Side::Bid, price, qty, symbol});
+    bid_account.cash_balance -= notional + bid_fee;
+    apply_position_accounting(bid_account, symbol, Side::Bid, price, qty, bid_fee);
+    ask_account.cash_balance += notional - ask_fee;
+    apply_position_accounting(ask_account, symbol, Side::Ask, price, qty, ask_fee);
+
+    if (auto reserve_it = reserved_cash_by_order_id_.find(bid_id); reserve_it != reserved_cash_by_order_id_.end()) {
+        const std::int64_t release = bid_qty_before <= 0 ? reserve_it->second : static_cast<std::int64_t>(std::ceil(static_cast<double>(reserve_it->second) * static_cast<double>(qty.value) / static_cast<double>(bid_qty_before)));
+        const std::int64_t bounded_release = std::min(reserve_it->second, release);
+        bid_account.reserved_cash -= bounded_release;
+        reserve_it->second -= bounded_release;
+        if (reserve_it->second == 0) reserved_cash_by_order_id_.erase(reserve_it);
+    }
+    if (auto reserve_it = reserved_qty_by_order_id_.find(ask_id); reserve_it != reserved_qty_by_order_id_.end()) {
+        const std::int64_t release = std::min(reserve_it->second, qty.value);
+        ask_account.reserved_qty_by_symbol[symbol] -= release;
+        reserve_it->second -= release;
+        if (reserve_it->second == 0) reserved_qty_by_order_id_.erase(reserve_it);
+    }
+    if (auto reserve_it = reserved_short_margin_by_order_id_.find(ask_id); reserve_it != reserved_short_margin_by_order_id_.end()) {
+        const std::int64_t release = ask_qty_before <= 0 ? reserve_it->second : static_cast<std::int64_t>(std::ceil(static_cast<double>(reserve_it->second) * static_cast<double>(qty.value) / static_cast<double>(ask_qty_before)));
+        const std::int64_t bounded_release = std::min(reserve_it->second, release);
+        ask_account.reserved_short_margin -= bounded_release;
+        reserve_it->second -= bounded_release;
+        if (reserve_it->second == 0) reserved_short_margin_by_order_id_.erase(reserve_it);
+    }
+
+    latest_mark_by_symbol_[symbol] = static_cast<double>(price.ticks);
+    append_ledger_entry(AccountLedgerEntry{0, bid_account_id, symbol, "auction_trade_settlement", -notional, qty.value, 0, 0, bid_id, ask_id, 0});
+    append_ledger_entry(AccountLedgerEntry{0, ask_account_id, symbol, "auction_trade_settlement", notional, -qty.value, 0, 0, ask_id, bid_id, 0});
+    if (bid_fee != 0) append_ledger_entry(AccountLedgerEntry{0, bid_account_id, symbol, "fee", -bid_fee, 0, 0, 0, bid_id, ask_id, bid_fee});
+    if (ask_fee != 0) append_ledger_entry(AccountLedgerEntry{0, ask_account_id, symbol, "fee", -ask_fee, 0, 0, 0, ask_id, bid_id, ask_fee});
+
+    if (bid_owner_it != order_ownership_by_id_.end()) {
+        bid_owner_it->second.qty.value -= qty.value;
+        if (bid_owner_it->second.qty.value == 0) order_ownership_by_id_.erase(bid_owner_it);
+    }
+    if (ask_owner_it != order_ownership_by_id_.end()) {
+        ask_owner_it->second.qty.value -= qty.value;
+        if (ask_owner_it->second.qty.value == 0) order_ownership_by_id_.erase(ask_owner_it);
+    }
+    events.emplace_back(OrderFilled{bid_id, qty, symbol});
+    events.emplace_back(OrderFilled{ask_id, qty, symbol});
+    assert_invariants(symbol, bid_account_id, ask_account_id);
+}
+
+std::vector<Event> MatchingEngine::uncross(const Symbol& symbol) {
+    const AuctionIndicative indicative = compute_auction_indicative(symbol);
+    std::vector<Event> events;
+    if (!indicative.price.has_value() || indicative.qty.value <= 0) {
+        events.emplace_back(AuctionUncross{symbol, Price{0}, Qty{0}, 0});
+        track_events(events);
+        return events;
+    }
+    OrderBook& book = book_for(symbol);
+    Qty remaining = indicative.qty;
+    const std::optional<Price> previous_best_bid = book.best_bid();
+    const std::optional<Price> previous_best_ask = book.best_ask();
+    while (remaining.value > 0) {
+        const std::optional<Price> best_bid = book.best_bid();
+        const std::optional<Price> best_ask = book.best_ask();
+        if (!best_bid.has_value() || !best_ask.has_value() || best_bid->ticks < indicative.price->ticks ||
+            best_ask->ticks > indicative.price->ticks) {
+            break;
+        }
+        const std::optional<Order> bid_order = book.front_of_level(Side::Bid, *best_bid);
+        const std::optional<Order> ask_order = book.front_of_level(Side::Ask, *best_ask);
+        if (!bid_order.has_value() || !ask_order.has_value()) break;
+        const Qty traded{std::min({remaining.value, bid_order->qty.value, ask_order->qty.value})};
+        const std::optional<OrderBook::FillResult> bid = book.fill_best_at_or_better(Side::Bid, *indicative.price, traded);
+        const std::optional<OrderBook::FillResult> ask = book.fill_best_at_or_better(Side::Ask, *indicative.price, traded);
+        if (!bid.has_value() || !ask.has_value()) break;
+        settle_auction_trade(symbol, bid->maker_id, ask->maker_id, *indicative.price, traded, events);
+        remaining.value -= traded.value;
+    }
+    events.insert(events.begin(), Event{AuctionUncross{symbol, *indicative.price, Qty{indicative.qty.value - remaining.value}, compute_auction_indicative(symbol).imbalance}});
+    maybe_emit_top_of_book_change(symbol, events, previous_best_bid, previous_best_ask);
+    const TradingPhase previous_phase = trading_phase(symbol);
+    if (previous_phase == TradingPhase::OpeningAuction || previous_phase == TradingPhase::ClosingAuction) {
+        trading_phases_by_symbol_[symbol] = TradingPhase::Continuous;
+        events.emplace_back(AuctionEnded{symbol, TradingPhase::Continuous});
+    }
+    track_events(events);
+    return events;
+}
+
 OrderBook& MatchingEngine::book_for(const Symbol& symbol) {
     return books_[symbol];
 }
@@ -372,6 +598,10 @@ std::vector<Event> MatchingEngine::place_limit_order_with_account_and_id(Account
     if (const auto risk_failure = validate_order_risk(account_id, symbol, side, price, qty)) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "order_rejected_risk_failure", 0, 0, 0, 0, taker_id, std::nullopt});
         return {OrderRejected{side, price, qty, *risk_failure, symbol}};
+    }
+
+    if (trading_phase(symbol) == TradingPhase::OpeningAuction || trading_phase(symbol) == TradingPhase::ClosingAuction) {
+        return rest_limit_order(account_id, symbol, taker_id, side, price, qty);
     }
 
     OrderBook& book = book_for(symbol);

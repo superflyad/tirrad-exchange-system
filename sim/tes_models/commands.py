@@ -51,8 +51,26 @@ class ReplaceOrderCommand:
     qty: int
 
 
+@dataclass(frozen=True)
+class SetTradingPhaseCommand:
+    symbol: str
+    phase: Literal["Continuous", "OpeningAuction", "ClosingAuction", "Halted"]
+
+
+@dataclass(frozen=True)
+class UncrossAuctionCommand:
+    symbol: str = DEFAULT_SYMBOL
+
+
 TesCommand: TypeAlias = (
-    LimitOrderCommand | MarketOrderCommand | StopOrderCommand | StopLimitOrderCommand | CancelOrderCommand | ReplaceOrderCommand
+    LimitOrderCommand
+    | MarketOrderCommand
+    | StopOrderCommand
+    | StopLimitOrderCommand
+    | CancelOrderCommand
+    | ReplaceOrderCommand
+    | SetTradingPhaseCommand
+    | UncrossAuctionCommand
 )
 
 
@@ -84,6 +102,12 @@ def _require_positive_int(value: Any, field_name: str) -> int:
 def _require_side(value: Any) -> Literal["BUY", "SELL"]:
     if value not in {"BUY", "SELL"}:
         raise ValueError("side must be either 'BUY' or 'SELL'")
+    return value
+
+
+def _require_trading_phase(value: Any) -> Literal["Continuous", "OpeningAuction", "ClosingAuction", "Halted"]:
+    if value not in {"Continuous", "OpeningAuction", "ClosingAuction", "Halted"}:
+        raise ValueError("phase must be one of: Continuous, OpeningAuction, ClosingAuction, Halted")
     return value
 
 
@@ -164,6 +188,14 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
             price=_require_positive_int(data["price"], "price"),
             qty=_require_positive_int(data["qty"], "qty"),
         )
+
+    if command_type == "SetTradingPhase":
+        _require_exact_keys(data, {"symbol", "phase"}, "SetTradingPhase.data")
+        return SetTradingPhaseCommand(symbol=_require_symbol(data["symbol"]), phase=_require_trading_phase(data["phase"]))
+
+    if command_type == "UncrossAuction":
+        _require_command_keys(data, set(), "UncrossAuction.data")
+        return UncrossAuctionCommand(symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)))
 
     raise ValueError(f"unknown command type: {command_type}")
 

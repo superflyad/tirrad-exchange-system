@@ -131,6 +131,12 @@ class MatchingEngine {
     [[nodiscard]] BookSnapshot snapshot(const Symbol& symbol, std::size_t levels) const;
     [[nodiscard]] std::uint64_t sequence_number() const;
     [[nodiscard]] std::uint64_t sequence_number(const Symbol& symbol) const;
+    [[nodiscard]] std::vector<Event> set_trading_phase(const Symbol& symbol, TradingPhase phase);
+    [[nodiscard]] TradingPhase trading_phase(const Symbol& symbol) const;
+    [[nodiscard]] std::optional<Price> indicative_price(const Symbol& symbol) const;
+    [[nodiscard]] Qty indicative_volume(const Symbol& symbol) const;
+    [[nodiscard]] std::int64_t auction_imbalance(const Symbol& symbol) const;
+    [[nodiscard]] std::vector<Event> uncross(const Symbol& symbol);
 
     [[nodiscard]] const OrderBook& book() const;
 
@@ -159,6 +165,10 @@ class MatchingEngine {
     [[nodiscard]] std::int64_t buy_reserve(AccountId account_id, const Symbol& symbol, Price price, Qty qty, std::int64_t fee) const;
     [[nodiscard]] std::int64_t short_margin_reserve(AccountId account_id, const Symbol& symbol, Price price, std::int64_t short_qty) const;
     [[nodiscard]] std::optional<RejectReason> validate_order_risk(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty, std::optional<OrderId> replacing_order_id = std::nullopt) const;
+    [[nodiscard]] std::vector<Event> rest_limit_order(AccountId account_id, const Symbol& symbol, OrderId id, Side side, Price price, Qty qty);
+    struct AuctionIndicative { std::optional<Price> price; Qty qty{0}; std::int64_t imbalance{0}; };
+    [[nodiscard]] AuctionIndicative compute_auction_indicative(const Symbol& symbol) const;
+    void settle_auction_trade(const Symbol& symbol, OrderId bid_id, OrderId ask_id, Price price, Qty qty, std::vector<Event>& events);
 
     std::unordered_map<Symbol, OrderBook> books_;
     OrderId next_order_id_ = 1;
@@ -175,6 +185,7 @@ class MatchingEngine {
     std::uint64_t next_ledger_sequence_ = 1;
     FeeModel fee_model_{};
     std::unordered_map<Symbol, double> latest_mark_by_symbol_;
+    std::unordered_map<Symbol, TradingPhase> trading_phases_by_symbol_;
 };
 
 }  // namespace tes

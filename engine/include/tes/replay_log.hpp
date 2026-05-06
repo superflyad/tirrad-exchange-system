@@ -34,7 +34,16 @@ struct CancelOrderCommand {
     OrderId id;
 };
 
-using ReplayCommand = std::variant<LimitOrderCommand, MarketOrderCommand, CancelOrderCommand>;
+struct SetTradingPhaseCommand {
+    Symbol symbol{kDefaultSymbol};
+    TradingPhase phase{TradingPhase::Continuous};
+};
+
+struct AuctionUncrossCommand {
+    Symbol symbol{kDefaultSymbol};
+};
+
+using ReplayCommand = std::variant<LimitOrderCommand, MarketOrderCommand, CancelOrderCommand, SetTradingPhaseCommand, AuctionUncrossCommand>;
 
 struct ReplayEntry {
     std::size_t sequence;
@@ -81,7 +90,13 @@ struct ReplayEntry {
             if constexpr (std::is_same_v<T, OrderPartiallyFilled>) return "OrderPartiallyFilled";
             if constexpr (std::is_same_v<T, OrderFilled>) return "OrderFilled";
             if constexpr (std::is_same_v<T, OrderExpired>) return "OrderExpired";
+            if constexpr (std::is_same_v<T, StopOrderAccepted>) return "StopOrderAccepted";
+            if constexpr (std::is_same_v<T, StopOrderTriggered>) return "StopOrderTriggered";
             if constexpr (std::is_same_v<T, TopOfBook>) return "TopOfBook";
+            if constexpr (std::is_same_v<T, AuctionStarted>) return "AuctionStarted";
+            if constexpr (std::is_same_v<T, AuctionEnded>) return "AuctionEnded";
+            if constexpr (std::is_same_v<T, AuctionUncross>) return "AuctionUncross";
+            if constexpr (std::is_same_v<T, IndicativePriceUpdated>) return "IndicativePriceUpdated";
             return "Unknown";
         },
         event);
@@ -111,6 +126,16 @@ struct ReplayEntry {
     return "Unknown";
 }
 
+[[nodiscard]] inline const char* trading_phase_name(TradingPhase phase) {
+    switch (phase) {
+        case TradingPhase::Continuous: return "Continuous";
+        case TradingPhase::OpeningAuction: return "OpeningAuction";
+        case TradingPhase::ClosingAuction: return "ClosingAuction";
+        case TradingPhase::Halted: return "Halted";
+    }
+    return "Unknown";
+}
+
 [[nodiscard]] inline std::string serialize_replay_command(const ReplayCommand& command) {
     return std::visit(
         [](const auto& value) {
@@ -126,8 +151,14 @@ struct ReplayEntry {
                 out << "{\"type\":\"MarketOrderCommand\",\"data\":{\"side\":\""
                     << (value.side == Side::Bid ? "Bid" : "Ask") << "\",\"qty\":" << value.qty.value
                     << ",\"symbol\":\"" << json_escape(value.symbol) << "\"}}";
-            } else {
+            } else if constexpr (std::is_same_v<T, CancelOrderCommand>) {
                 out << "{\"type\":\"CancelOrderCommand\",\"data\":{\"id\":" << value.id << "}}";
+            } else if constexpr (std::is_same_v<T, SetTradingPhaseCommand>) {
+                out << "{\"type\":\"SetTradingPhaseCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\",\"phase\":\"" << trading_phase_name(value.phase) << "\"}}";
+            } else {
+                out << "{\"type\":\"AuctionUncrossCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
             }
             return out.str();
         },
@@ -203,8 +234,12 @@ class ReplayLog {
                                                     command.time_in_force);
                 } else if constexpr (std::is_same_v<T, MarketOrderCommand>) {
                     return engine.place_market_order(0, command.symbol, command.side, command.qty);
-                } else {
+                } else if constexpr (std::is_same_v<T, CancelOrderCommand>) {
                     return engine.cancel(command.id);
+                } else if constexpr (std::is_same_v<T, SetTradingPhaseCommand>) {
+                    return engine.set_trading_phase(command.symbol, command.phase);
+                } else {
+                    return engine.uncross(command.symbol);
                 }
             },
             entry.command);

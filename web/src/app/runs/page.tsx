@@ -15,7 +15,7 @@ export default async function RunsPage() {
           <h1>Runs</h1>
           <p>Filter, sort, and open persisted TES sessions and backtests.</p>
         </div>
-        <a className="button" href="/runs">Refresh</a>
+        <div className="cluster"><a className="button" href="/runs/compare">Compare runs</a><a className="button" href="/runs">Refresh</a></div>
       </header>
       <section className="panel">
         <div className="split"><h2>Workers</h2><span className="muted">{workers.length} observed</span></div>

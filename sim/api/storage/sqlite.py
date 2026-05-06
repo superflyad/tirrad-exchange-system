@@ -296,6 +296,37 @@ class SQLiteRunStore:
             )
         return True
 
+    def store_verification(self, run_id: str, report: dict[str, Any]) -> dict[str, Any] | None:
+        if not self._run_exists(run_id):
+            return None
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO run_verifications (run_id, verified_at, status, report_json)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    verified_at = excluded.verified_at,
+                    status = excluded.status,
+                    report_json = excluded.report_json
+                """,
+                (
+                    run_id,
+                    _string_or_none(report.get("verified_at")),
+                    _string_or_none(report.get("status")) or "failed",
+                    _encode_json(report),
+                ),
+            )
+        return self.get_verification(run_id)
+
+    def get_verification(self, run_id: str) -> dict[str, Any] | None:
+        if not self._run_exists(run_id):
+            return None
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT report_json FROM run_verifications WHERE run_id = ?", (run_id,)
+            ).fetchone()
+        return _decode_json(row["report_json"], {}) if row is not None else {}
+
     def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord:
         record = TournamentRecord(
             tournament_id=uuid4().hex,
@@ -454,6 +485,13 @@ class SQLiteRunStore:
                 error TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS run_verifications (
+                run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+                verified_at TEXT,
+                status TEXT NOT NULL,
+                report_json TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS run_reports (
                 run_id TEXT PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
                 report_json TEXT NOT NULL
@@ -500,6 +538,7 @@ class SQLiteRunStore:
             CREATE INDEX IF NOT EXISTS idx_runs_run_type ON runs(run_type);
             CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
             CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at);
+            CREATE INDEX IF NOT EXISTS idx_run_verifications_status ON run_verifications(status);
             CREATE INDEX IF NOT EXISTS idx_run_events_lookup ON run_events(run_id, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_events_symbol ON run_events(run_id, symbol, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_events_type ON run_events(run_id, event_type, sequence);
@@ -563,6 +602,7 @@ class SQLiteRunStore:
             accounts=self.get_accounts(run_id) or [],
             logs=self.get_logs(run_id) or [],
             error=row["error"],
+            verification=self.get_verification(run_id) or {},
         )
 
     def _replace_payload_rows(self, table: str, run_id: str, rows: Iterable[tuple[Any, ...]]) -> None:

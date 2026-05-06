@@ -10,6 +10,9 @@ from fastapi.responses import StreamingResponse
 
 from sim.api.models import (
     BacktestRunRequest,
+    ReplayVerificationReportModel,
+    RunDiffRequest,
+    RunDiffResultModel,
     RunAccountsResponse,
     RunDetail,
     RunEventsResponse,
@@ -253,6 +256,21 @@ def get_account_timeline(
 @router.post("/runs/{run_id}/replay", response_model=RunReplayResponse)
 def replay_run(run_id: str, request: Request) -> RunReplayResponse:
     return _replay_service(request).replay_run(run_id)
+
+
+@router.post("/runs/{run_id}/verify", response_model=ReplayVerificationReportModel)
+def verify_run(run_id: str, request: Request) -> ReplayVerificationReportModel:
+    return _replay_service(request).verify_run(run_id)
+
+
+@router.get("/runs/{run_id}/verification", response_model=ReplayVerificationReportModel)
+def get_verification(run_id: str, request: Request) -> ReplayVerificationReportModel:
+    return _replay_service(request).get_verification(run_id)
+
+
+@router.post("/runs/diff", response_model=RunDiffResultModel)
+def diff_runs(payload: RunDiffRequest, request: Request) -> RunDiffResultModel:
+    return _replay_service(request).diff_runs(payload)
 
 
 @router.get("/runs/{run_id}/summary", response_model=RunInspectionSummary)

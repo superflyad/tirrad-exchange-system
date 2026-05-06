@@ -6,8 +6,20 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from sim.api.errors import RunNotFoundError
-from sim.api.models import RunInspectionSummary, RunReplayResponse, TimelineEntry
+from sim.api.models import (
+    BacktestRunRequest,
+    ReplayVerificationReportModel,
+    RunDiffRequest,
+    RunDiffResultModel,
+    RunInspectionSummary,
+    RunReplayResponse,
+    SessionRunRequest,
+    TimelineEntry,
+)
 from sim.api.storage import RunRecord, RunStore
+from sim.api.services.backtest_service import run_backtest
+from sim.api.services.session_service import run_session
+from sim.tes_replay.verification import ReplayVerifier
 
 TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
 ReplayStatus = Literal["replayed", "reconstructed", "unavailable", "mismatch"]
@@ -43,6 +55,7 @@ class ReplayService:
 
     def __init__(self, store: RunStore) -> None:
         self._store = store
+        self._verifier = ReplayVerifier()
 
     def load_run(self, run_id: str) -> _RunArtifacts:
         record = self._store.get_run(run_id)
@@ -87,6 +100,72 @@ class ReplayService:
             event_count_matches=True,
             event_hash_matches=None,
         )
+
+    def verify_run(self, run_id: str) -> ReplayVerificationReportModel:
+        artifacts = self.load_run(run_id)
+        original = _artifact_payload(artifacts)
+        replayed: dict[str, Any] | None = None
+        error: str | None = None
+        if artifacts.record.status != "completed":
+            report = self._verifier.verify(
+                run_id=run_id,
+                original=original,
+                replayed=None,
+                error="only completed runs can be replay verified",
+            )
+            payload = report.to_dict() | {
+                "status": "partial",
+                "message": "Run is not completed; replay verification is partial.",
+            }
+            self._store.store_verification(run_id, payload)
+            return ReplayVerificationReportModel(**payload)
+        try:
+            if artifacts.record.run_type == "session":
+                request = SessionRunRequest(**artifacts.record.config)
+                replayed = run_session(request)
+            elif artifacts.record.run_type == "backtest":
+                request = BacktestRunRequest(**artifacts.record.config)
+                replayed = run_backtest(request)
+            else:
+                error = f"unsupported run type: {artifacts.record.run_type}"
+        except Exception as exc:  # deterministic verification must report failures, not leak exceptions
+            error = str(exc) or exc.__class__.__name__
+        report = self._verifier.verify(
+            run_id=run_id, original=original, replayed=replayed, error=error
+        )
+        payload = report.to_dict()
+        self._store.store_verification(run_id, payload)
+        return ReplayVerificationReportModel(**payload)
+
+    def get_verification(self, run_id: str) -> ReplayVerificationReportModel:
+        if self._store.get_run(run_id) is None:
+            raise RunNotFoundError(run_id)
+        payload = self._store.get_verification(run_id)
+        if not payload:
+            artifacts = self.load_run(run_id)
+            original = _artifact_payload(artifacts)
+            report = self._verifier.verify(
+                run_id=run_id,
+                original=original,
+                replayed=None,
+                error="verification has not been run",
+            )
+            payload = report.to_dict() | {
+                "status": "partial",
+                "message": "Verification has not been run for this run.",
+            }
+        return ReplayVerificationReportModel(**payload)
+
+    def diff_runs(self, request: RunDiffRequest) -> RunDiffResultModel:
+        left = self.load_run(request.left_run_id)
+        right = self.load_run(request.right_run_id)
+        result = self._verifier.diff_runs(
+            left_run_id=request.left_run_id,
+            right_run_id=request.right_run_id,
+            left=_artifact_payload(left),
+            right=_artifact_payload(right),
+        )
+        return RunDiffResultModel(**result.to_dict())
 
     def summarize_run(self, run_id: str) -> RunInspectionSummary:
         artifacts = self.load_run(run_id)
@@ -499,3 +578,13 @@ def _final_positions(report: dict[str, Any], accounts: list[dict[str, Any]]) -> 
         if isinstance(positions, dict):
             return dict(positions)
     return {}
+
+
+def _artifact_payload(artifacts: _RunArtifacts) -> dict[str, Any]:
+    return {
+        "report": artifacts.report,
+        "events": artifacts.events,
+        "snapshots": artifacts.snapshots,
+        "accounts": artifacts.accounts,
+        "logs": artifacts.logs,
+    }

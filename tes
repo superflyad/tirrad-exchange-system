@@ -92,20 +92,78 @@ Usage:
   ./${SCRIPT_NAME} sim <command>
   ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH] [--queue]
   ./${SCRIPT_NAME} worker run [--worker-id ID] [--poll-interval SECONDS] [--max-jobs N] [--sqlite-path PATH] [--once]
-  ./${SCRIPT_NAME} bench [preset]
+  ./${SCRIPT_NAME} bench [preset] [--json] [--output PATH]
 USAGE
 }
 
 run_bench() {
-  local preset="${1:-$(default_preset)}"
-  echo "[TES] Configure preset: ${preset}"
-  cmake --preset "${preset}"
-  echo "[TES] Build preset: ${preset}"
-  cmake --build --preset "${preset}"
+  local preset="$(default_preset)"
+  local json_output=0
+  local output_path=""
+  local preset_set=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)
+        json_output=1
+        shift
+        ;;
+      --output)
+        if [[ $# -lt 2 ]]; then
+          echo "--output requires a path" >&2
+          exit 1
+        fi
+        output_path="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --*)
+        echo "Unknown bench option: $1" >&2
+        exit 1
+        ;;
+      *)
+        if [[ "${preset_set}" -eq 1 ]]; then
+          echo "Unexpected bench argument: $1" >&2
+          exit 1
+        fi
+        preset="$1"
+        preset_set=1
+        shift
+        ;;
+    esac
+  done
+
+  if [[ "${json_output}" -eq 0 ]]; then
+    echo "[TES] Configure preset: ${preset}"
+  fi
+  if [[ "${json_output}" -eq 1 ]]; then
+    cmake --preset "${preset}" >/dev/null
+  else
+    cmake --preset "${preset}"
+  fi
+  if [[ "${json_output}" -eq 0 ]]; then
+    echo "[TES] Build preset: ${preset}"
+    cmake --build --preset "${preset}"
+  else
+    cmake --build --preset "${preset}" >/dev/null
+  fi
   local exe="out/build/${preset}/engine/tes_engine_bench"
   if is_windows_shell; then exe="${exe}.exe"; fi
-  echo "[TES] Run benchmark: ${exe}"
-  "${exe}"
+  if [[ "${json_output}" -eq 0 ]]; then
+    echo "[TES] Run benchmark: ${exe}"
+  fi
+
+  local helper_args=(--executable "${exe}" --repo-root "$(pwd)" --preset "${preset}")
+  if [[ "${json_output}" -eq 1 ]]; then
+    helper_args+=(--json)
+  fi
+  if [[ -n "${output_path}" ]]; then
+    helper_args+=(--output "${output_path}")
+  fi
+  run_python_module sim.tes_benchmarks.cli "${helper_args[@]}"
 }
 
 run_python_module() {
@@ -197,7 +255,8 @@ case "$cmd" in
     run_worker_cli "$@"
     ;;
   bench)
-    run_bench "${2:-}"
+    shift
+    run_bench "$@"
     ;;
   ""|-h|--help|help)
     usage

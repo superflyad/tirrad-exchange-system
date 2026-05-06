@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
 
-RunType = Literal["session", "backtest"]
+RunType = Literal["session", "backtest", "benchmark"]
 TournamentType = Literal["strategy_vs_strategy", "strategy_vs_scenario", "parameter_sweep", "multi_symbol_sweep"]
 ExecutionMode = Literal["sync", "queued"]
 RunStatus = Literal["pending", "running", "completed", "failed", "canceled"]
@@ -71,6 +71,55 @@ class BacktestRunRequest(StrictApiModel):
         if not symbols or any(symbol == "" for symbol in symbols):
             raise ValueError("symbols must contain at least one non-empty symbol")
         return symbols
+
+
+class BenchmarkRunRequest(StrictApiModel):
+    mode: ExecutionMode | None = None
+    threshold_percent: StrictFloat = Field(default=10.0, ge=0.0)
+    persist: StrictBool = True
+
+
+class BenchmarkScenarioModel(StrictApiModel):
+    name: str
+    operation_count: StrictInt
+    elapsed_ms: StrictFloat
+    ops_per_sec: StrictFloat
+    notes: str | None = None
+    config: dict[str, Any]
+
+
+class BenchmarkRunModel(StrictApiModel):
+    benchmark_id: str
+    created_at: datetime
+    git_sha: str | None
+    machine: dict[str, Any]
+    scenarios: list[BenchmarkScenarioModel]
+    notes: str | None = None
+    config: dict[str, Any]
+
+
+class BenchmarkCompareRequest(StrictApiModel):
+    baseline_id: StrictStr | None = None
+    candidate_id: StrictStr | None = None
+    threshold_percent: StrictFloat = Field(default=10.0, ge=0.0)
+
+
+class BenchmarkScenarioComparisonModel(StrictApiModel):
+    name: str
+    baseline_ops_per_sec: StrictFloat | None
+    candidate_ops_per_sec: StrictFloat | None
+    percent_delta: StrictFloat | None
+    regression: StrictBool
+    improvement: StrictBool
+    threshold_percent: StrictFloat
+
+
+class BenchmarkComparisonModel(StrictApiModel):
+    baseline_id: str
+    candidate_id: str
+    threshold_percent: StrictFloat
+    has_regression: StrictBool
+    scenarios: list[BenchmarkScenarioComparisonModel]
 
 
 class ParameterSweepConfig(StrictApiModel):

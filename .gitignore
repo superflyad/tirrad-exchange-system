@@ -219,3 +219,10 @@ data/*
 
 # TES engine C++ build output
 engine/build/
+
+# TES dashboard frontend artifacts
+web/.next/
+web/node_modules/
+web/tsconfig.tsbuildinfo
+!web/src/lib/
+!web/src/lib/**

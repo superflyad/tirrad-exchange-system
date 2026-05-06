@@ -1,0 +1,97 @@
+import type {
+  AccountsResponse,
+  EventsResponse,
+  HealthResponse,
+  LogsResponse,
+  ReportResponse,
+  RunDetail,
+  RunSummary,
+  SnapshotsResponse,
+  TimelineCategory,
+  TimelineResponse,
+} from "@/types/api";
+
+export interface TimelineQuery {
+  symbol?: string;
+  category?: TimelineCategory | "";
+  type?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CollectionQuery {
+  symbol?: string;
+  event_type?: string;
+  account_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly payload: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_TES_API_URL ?? "/api/tes");
+
+function normalizeBaseUrl(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function appendQuery(path: string, query?: object): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query ?? {}) as [string, unknown][]) {
+    if ((typeof value === "string" || typeof value === "number") && value !== "") params.set(key, String(value));
+  }
+  const serialized = params.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: { Accept: "application/json", ...init?.headers },
+  });
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const message = extractErrorMessage(payload) ?? `TES API request failed with ${response.status}`;
+    throw new ApiError(response.status, message, payload);
+  }
+  return payload as T;
+}
+
+function extractErrorMessage(payload: unknown): string | undefined {
+  if (payload && typeof payload === "object" && "error" in payload) {
+    const error = (payload as { error?: { message?: unknown } }).error;
+    return typeof error?.message === "string" ? error.message : undefined;
+  }
+  return undefined;
+}
+
+export function streamRunUrl(runId: string, replayLimit = 100): string {
+  return `${API_BASE_URL}${appendQuery(`/runs/${encodeURIComponent(runId)}/stream`, { replay_limit: replayLimit })}`;
+}
+
+export const tesApi = {
+  health: () => apiFetch<HealthResponse>("/health"),
+  listRuns: () => apiFetch<RunSummary[]>("/runs"),
+  getRun: (runId: string) => apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}`),
+  getReport: (runId: string) => apiFetch<ReportResponse>(`/runs/${encodeURIComponent(runId)}/report`),
+  getTimeline: (runId: string, query?: TimelineQuery) =>
+    apiFetch<TimelineResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/timeline`, query)),
+  getEvents: (runId: string, query?: CollectionQuery) =>
+    apiFetch<EventsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/events`, query)),
+  getSnapshots: (runId: string, query?: CollectionQuery) =>
+    apiFetch<SnapshotsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/snapshots`, query)),
+  getAccounts: (runId: string, query?: CollectionQuery) =>
+    apiFetch<AccountsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/accounts`, query)),
+  getLogs: (runId: string, query?: CollectionQuery) =>
+    apiFetch<LogsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/logs`, query)),
+};

@@ -9,6 +9,7 @@ from sim.api.routes.health import router as health_router
 from sim.api.routes.runs import router as runs_router
 from sim.api.services.replay_service import ReplayService
 from sim.api.services.run_service import RunService
+from sim.api.services.stream_service import StreamService
 from sim.api.storage import RunStore, create_run_store
 
 
@@ -26,8 +27,10 @@ def create_app(
         description="Local API service for deterministic TES sessions and backtests.",
     )
     run_store = store or create_run_store(store=store_kind, sqlite_path=sqlite_path)
+    stream_service = StreamService(run_store)
     app.state.run_store = run_store
-    app.state.run_service = RunService(run_store)
+    app.state.stream_service = stream_service
+    app.state.run_service = RunService(run_store, stream_service)
     app.state.replay_service = ReplayService(run_store)
     register_error_handlers(app)
     app.include_router(health_router)

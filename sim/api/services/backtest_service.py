@@ -19,7 +19,12 @@ def _step_to_dict(step: object) -> dict[str, Any]:
     return raw
 
 
-def run_backtest(request: BacktestRunRequest) -> dict[str, Any]:
+def run_backtest(
+    request: BacktestRunRequest,
+    *,
+    run_id: str | None = None,
+    progress_callback: Any | None = None,
+) -> dict[str, Any]:
     """Execute a strategy backtest and return JSON-friendly artifacts."""
 
     try:
@@ -35,7 +40,10 @@ def run_backtest(request: BacktestRunRequest) -> dict[str, Any]:
         initial_cash=request.initial_cash,
         depth_levels=request.depth_levels,
     )
-    result = BacktestRunner(engine=engine, config=config, strategies=[strategy]).run()
+    result = BacktestRunner(engine=engine, config=config, strategies=[strategy]).run(
+        progress_interval=request.progress_interval,
+        progress_callback=progress_callback,
+    )
     return {
         "config": asdict(result.config),
         "report": asdict(result.metrics),

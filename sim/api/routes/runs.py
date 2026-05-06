@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
+
 from fastapi import APIRouter, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from sim.api.models import (
     BacktestRunRequest,
@@ -20,6 +24,7 @@ from sim.api.models import (
 )
 from sim.api.services.replay_service import ReplayService
 from sim.api.services.run_service import RunService
+from sim.api.services.stream_service import StreamService
 
 router = APIRouter(tags=["runs"])
 
@@ -30,6 +35,10 @@ def _service(request: Request) -> RunService:
 
 def _replay_service(request: Request) -> ReplayService:
     return request.app.state.replay_service
+
+
+def _stream_service(request: Request) -> StreamService:
+    return request.app.state.stream_service
 
 
 @router.post("/sessions/run", response_model=RunDetail)
@@ -50,6 +59,32 @@ def list_runs(request: Request) -> list[RunSummary]:
 @router.get("/runs/{run_id}", response_model=RunDetail)
 def get_run(run_id: str, request: Request) -> RunDetail:
     return _service(request).get_run(run_id)
+
+
+@router.get("/runs/{run_id}/stream")
+def stream_run(
+    run_id: str,
+    request: Request,
+    replay_limit: int = Query(default=100, ge=0),
+) -> StreamingResponse:
+    record = _service(request).get_run(run_id)
+    stream_service = _stream_service(request)
+
+    def events() -> Iterator[str]:
+        for message in stream_service.replay_recent(run_id, replay_limit):
+            yield _sse_message(message.model_dump(mode="json"))
+        if record.status in {"completed", "failed", "canceled"} or stream_service.is_closed(run_id):
+            return
+        for message in stream_service.subscribe(run_id):
+            yield _sse_message(message.model_dump(mode="json"))
+
+    return StreamingResponse(events(), media_type="text/event-stream")
+
+
+def _sse_message(payload: dict[str, object]) -> str:
+    event_type = str(payload.get("category") or "message")
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return f"event: {event_type}\ndata: {data}\n\n"
 
 
 @router.get("/runs/{run_id}/report", response_model=RunReportResponse)

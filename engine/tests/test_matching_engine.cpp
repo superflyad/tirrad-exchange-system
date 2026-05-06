@@ -970,3 +970,82 @@ TEST_CASE("cancel routes by stored symbol and replace preserves symbol") {
     CHECK(std::get<tes::OrderCanceled>(canceled.front()).symbol == "ALT");
     CHECK(engine.depth("ALT", 1).bids.empty());
 }
+
+TEST_CASE("stop-market buy triggers upward and executes") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{99}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{101}, tes::Qty{10});
+
+    const auto stop = engine.place_stop_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{2});
+    REQUIRE(std::holds_alternative<tes::StopOrderAccepted>(stop.front()));
+    CHECK(collect_trades(stop).empty());
+
+    const auto trigger = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+    bool saw_trigger = false;
+    for (const auto& event : trigger) saw_trigger = saw_trigger || std::holds_alternative<tes::StopOrderTriggered>(event);
+    CHECK(saw_trigger);
+    const auto trades = collect_trades(trigger);
+    CHECK(trades.size() == 2);
+    CHECK(trades.back().taker_side == tes::Side::Bid);
+}
+
+TEST_CASE("stop-market sell triggers downward and symbol isolation applies") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{99}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{101}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "BBB", tes::Side::Bid, tes::Price{49}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "BBB", tes::Side::Ask, tes::Price{51}, tes::Qty{10});
+
+    const auto stop = engine.place_stop_order(0, "AAA", tes::Side::Ask, tes::Price{99}, tes::Qty{2});
+    REQUIRE(std::holds_alternative<tes::StopOrderAccepted>(stop.front()));
+    const auto bbb_move = engine.place_limit_order(0, "BBB", tes::Side::Ask, tes::Price{49}, tes::Qty{1});
+    for (const auto& event : bbb_move) CHECK_FALSE(std::holds_alternative<tes::StopOrderTriggered>(event));
+
+    const auto trigger = engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{99}, tes::Qty{3});
+    bool saw_trigger = false;
+    for (const auto& event : trigger) saw_trigger = saw_trigger || std::holds_alternative<tes::StopOrderTriggered>(event);
+    CHECK(saw_trigger);
+    CHECK(collect_trades(trigger).back().taker_side == tes::Side::Ask);
+}
+
+TEST_CASE("stop-limit rests when triggered without crossing") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{99}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{101}, tes::Qty{10});
+
+    const auto stop = engine.place_stop_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Price{100}, tes::Qty{2});
+    REQUIRE(std::holds_alternative<tes::StopOrderAccepted>(stop.front()));
+
+    const auto trigger = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+    bool saw_trigger = false;
+    bool saw_accept = false;
+    for (const auto& event : trigger) {
+        saw_trigger = saw_trigger || std::holds_alternative<tes::StopOrderTriggered>(event);
+        saw_accept = saw_accept || std::holds_alternative<tes::OrderAccepted>(event);
+    }
+    CHECK(saw_trigger);
+    CHECK(saw_accept);
+    REQUIRE(engine.depth("AAA", 1).bids.size() == 1);
+    CHECK(engine.depth("AAA", 1).bids.front().price.ticks == 100);
+}
+
+TEST_CASE("multiple stops trigger by stop id order and pending stop can cancel") {
+    tes::MatchingEngine engine;
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{99}, tes::Qty{10});
+    (void)engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{101}, tes::Qty{10});
+
+    const auto first = std::get<tes::StopOrderAccepted>(engine.place_stop_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1}).front());
+    const auto second = std::get<tes::StopOrderAccepted>(engine.place_stop_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1}).front());
+    const auto third = std::get<tes::StopOrderAccepted>(engine.place_stop_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1}).front());
+    const auto canceled = engine.cancel(0, first.id);
+    REQUIRE(std::holds_alternative<tes::OrderCanceled>(canceled.front()));
+
+    const auto trigger = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{101}, tes::Qty{1});
+    std::vector<tes::StopOrderTriggered> triggered;
+    for (const auto& event : trigger) {
+        if (std::holds_alternative<tes::StopOrderTriggered>(event)) triggered.push_back(std::get<tes::StopOrderTriggered>(event));
+    }
+    REQUIRE(triggered.size() == 2);
+    CHECK(triggered[0].id == second.id);
+    CHECK(triggered[1].id == third.id);
+}

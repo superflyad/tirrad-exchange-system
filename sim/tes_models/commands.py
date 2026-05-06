@@ -23,6 +23,23 @@ class MarketOrderCommand:
 
 
 @dataclass(frozen=True)
+class StopOrderCommand:
+    side: Literal["BUY", "SELL"]
+    stop_price: int
+    qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
+class StopLimitOrderCommand:
+    side: Literal["BUY", "SELL"]
+    stop_price: int
+    limit_price: int
+    qty: int
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
 class CancelOrderCommand:
     order_id: int
 
@@ -34,7 +51,9 @@ class ReplaceOrderCommand:
     qty: int
 
 
-TesCommand: TypeAlias = LimitOrderCommand | MarketOrderCommand | CancelOrderCommand | ReplaceOrderCommand
+TesCommand: TypeAlias = (
+    LimitOrderCommand | MarketOrderCommand | StopOrderCommand | StopLimitOrderCommand | CancelOrderCommand | ReplaceOrderCommand
+)
 
 
 def _require_dict(value: Any, name: str) -> dict[str, Any]:
@@ -111,6 +130,25 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
         _require_command_keys(data, {"side", "qty"}, "MarketOrder.data")
         return MarketOrderCommand(
             side=_require_side(data["side"]),
+            qty=_require_positive_int(data["qty"], "qty"),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
+        )
+
+    if command_type == "StopMarketOrder":
+        _require_command_keys(data, {"side", "stop_price", "qty"}, "StopMarketOrder.data")
+        return StopOrderCommand(
+            side=_require_side(data["side"]),
+            stop_price=_require_positive_int(data["stop_price"], "stop_price"),
+            qty=_require_positive_int(data["qty"], "qty"),
+            symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
+        )
+
+    if command_type == "StopLimitOrder":
+        _require_command_keys(data, {"side", "stop_price", "limit_price", "qty"}, "StopLimitOrder.data")
+        return StopLimitOrderCommand(
+            side=_require_side(data["side"]),
+            stop_price=_require_positive_int(data["stop_price"], "stop_price"),
+            limit_price=_require_positive_int(data["limit_price"], "limit_price"),
             qty=_require_positive_int(data["qty"], "qty"),
             symbol=_require_symbol(data.get("symbol", DEFAULT_SYMBOL)),
         )

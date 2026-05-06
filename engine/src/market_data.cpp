@@ -17,6 +17,8 @@ std::string event_name(const Event& event) {
         else if constexpr (std::is_same_v<T, OrderPartiallyFilled>) return "OrderPartiallyFilled";
         else if constexpr (std::is_same_v<T, OrderFilled>) return "OrderFilled";
         else if constexpr (std::is_same_v<T, OrderExpired>) return "OrderExpired";
+        else if constexpr (std::is_same_v<T, StopOrderAccepted>) return "StopOrderAccepted";
+        else if constexpr (std::is_same_v<T, StopOrderTriggered>) return "StopOrderTriggered";
         else return "TopOfBook";
     }, event);
 }

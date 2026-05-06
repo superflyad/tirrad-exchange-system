@@ -12,6 +12,10 @@ RejectReasonLiteral: TypeAlias = Literal[
     "InsufficientCash",
     "InsufficientPosition",
     "WrongAccount",
+    "InsufficientBuyingPower",
+    "ShortSellingDisabled",
+    "MarginRequirementFailed",
+    "MaintenanceMarginBreached",
 ]
 
 
@@ -77,6 +81,27 @@ class OrderExpiredData:
 
 
 @dataclass(frozen=True)
+class StopOrderAcceptedData:
+    order_id: int
+    side: Literal["BUY", "SELL"]
+    stop_price: int
+    qty: int
+    limit_price: int | None
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
+class StopOrderTriggeredData:
+    order_id: int
+    resulting_order_id: int
+    side: Literal["BUY", "SELL"]
+    stop_price: int
+    qty: int
+    limit_price: int | None
+    symbol: str = DEFAULT_SYMBOL
+
+
+@dataclass(frozen=True)
 class TopOfBookData:
     best_bid: int | None
     best_ask: int | None
@@ -132,6 +157,18 @@ class OrderExpired:
 
 
 @dataclass(frozen=True)
+class StopOrderAccepted:
+    type: Literal["StopOrderAccepted"]
+    data: StopOrderAcceptedData
+
+
+@dataclass(frozen=True)
+class StopOrderTriggered:
+    type: Literal["StopOrderTriggered"]
+    data: StopOrderTriggeredData
+
+
+@dataclass(frozen=True)
 class TopOfBook:
     type: Literal["TopOfBook"]
     data: TopOfBookData
@@ -146,6 +183,8 @@ TesEngineEvent: TypeAlias = (
     | OrderPartiallyFilled
     | OrderFilled
     | OrderExpired
+    | StopOrderAccepted
+    | StopOrderTriggered
     | TopOfBook
 )
 
@@ -209,6 +248,10 @@ def _require_reject_reason(value: Any) -> RejectReasonLiteral:
         "InsufficientCash",
         "InsufficientPosition",
         "WrongAccount",
+        "InsufficientBuyingPower",
+        "ShortSellingDisabled",
+        "MarginRequirementFailed",
+        "MaintenanceMarginBreached",
     }
     if value not in allowed:
         raise ValueError(f"reason must be one of {', '.join(sorted(allowed))}")
@@ -278,6 +321,39 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
                 qty=_require_int(data["qty"], "qty"),
                 maker_order_id=_require_int(data["maker_order_id"], "maker_order_id"),
                 taker_order_id=_require_int(data["taker_order_id"], "taker_order_id"),
+                symbol=_optional_symbol(data),
+            ),
+        )
+
+    if event_type == "StopOrderAccepted":
+        _require_event_keys(data, {"order_id", "side", "stop_price", "qty", "limit_price"}, "StopOrderAccepted.data")
+        return StopOrderAccepted(
+            type="StopOrderAccepted",
+            data=StopOrderAcceptedData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                side=_require_side(data["side"]),
+                stop_price=_require_int(data["stop_price"], "stop_price"),
+                qty=_require_int(data["qty"], "qty"),
+                limit_price=_require_optional_int(data["limit_price"], "limit_price"),
+                symbol=_optional_symbol(data),
+            ),
+        )
+
+    if event_type == "StopOrderTriggered":
+        _require_event_keys(
+            data,
+            {"order_id", "resulting_order_id", "side", "stop_price", "qty", "limit_price"},
+            "StopOrderTriggered.data",
+        )
+        return StopOrderTriggered(
+            type="StopOrderTriggered",
+            data=StopOrderTriggeredData(
+                order_id=_require_int(data["order_id"], "order_id"),
+                resulting_order_id=_require_int(data["resulting_order_id"], "resulting_order_id"),
+                side=_require_side(data["side"]),
+                stop_price=_require_int(data["stop_price"], "stop_price"),
+                qty=_require_int(data["qty"], "qty"),
+                limit_price=_require_optional_int(data["limit_price"], "limit_price"),
                 symbol=_optional_symbol(data),
             ),
         )

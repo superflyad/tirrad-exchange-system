@@ -307,10 +307,14 @@ MatchingEngine::PerformanceSnapshot MatchingEngine::performance_snapshot(Account
 }
 std::optional<AccountId> MatchingEngine::order_owner(OrderId id) const {
     const auto it = order_ownership_by_id_.find(id);
-    if (it == order_ownership_by_id_.end()) {
-        return std::nullopt;
+    if (it != order_ownership_by_id_.end()) {
+        return it->second.account_id;
     }
-    return it->second.account_id;
+    const auto stop_it = stop_orders_by_id_.find(id);
+    if (stop_it != stop_orders_by_id_.end()) {
+        return stop_it->second.account_id;
+    }
+    return std::nullopt;
 }
 
 OrderBook& MatchingEngine::book_for(const Symbol& symbol) {
@@ -341,6 +345,8 @@ std::vector<Event> MatchingEngine::place_limit_order(AccountId account_id, const
                                                      Qty qty, TimeInForce tif) {
     const OrderId id = next_order_id_++;
     std::vector<Event> events = place_limit_order_with_account_and_id(account_id, symbol, id, side, price, qty, tif);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
     track_events(events);
     return events;
 }
@@ -529,6 +535,16 @@ std::vector<Event> MatchingEngine::place_market_order(AccountId account_id, Side
 }
 
 std::vector<Event> MatchingEngine::place_market_order(AccountId account_id, const Symbol& symbol, Side side, Qty qty) {
+    const OrderId id = next_order_id_++;
+    std::vector<Event> events = place_market_order_with_account_and_id(account_id, symbol, id, side, qty);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::place_market_order_with_account_and_id(AccountId account_id, const Symbol& symbol,
+                                                                          OrderId taker_id, Side side, Qty qty) {
     if (!is_valid_qty(qty)) {
         return {OrderRejected{side, Price{0}, qty, RejectReason::InvalidQuantity, symbol}};
     }
@@ -544,21 +560,139 @@ std::vector<Event> MatchingEngine::place_market_order(AccountId account_id, cons
         for (const auto& level : available_depth.asks) {
             market_limit = level.price;
             remaining.value -= std::min(remaining.value, level.qty.value);
-            if (remaining.value == 0) {
-                break;
-            }
+            if (remaining.value == 0) break;
         }
     } else {
         Qty remaining = qty;
         for (const auto& level : available_depth.bids) {
             market_limit = level.price;
             remaining.value -= std::min(remaining.value, level.qty.value);
-            if (remaining.value == 0) {
-                break;
-            }
+            if (remaining.value == 0) break;
         }
     }
-    return place_limit_order(account_id, symbol, side, market_limit, qty, TimeInForce::Ioc);
+    return place_limit_order_with_account_and_id(account_id, symbol, taker_id, side, market_limit, qty, TimeInForce::Ioc);
+}
+
+std::vector<Event> MatchingEngine::place_stop_order(Side side, Price stop_price, Qty qty) {
+    return place_stop_order(kDefaultAccountId, kDefaultSymbol, side, stop_price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_stop_order(AccountId account_id, Side side, Price stop_price, Qty qty) {
+    return place_stop_order(account_id, kDefaultSymbol, side, stop_price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_stop_order(AccountId account_id, const Symbol& symbol, Side side,
+                                                    Price stop_price, Qty qty) {
+    const OrderId id = next_order_id_++;
+    std::vector<Event> events = place_stop_order_with_account_and_id(account_id, symbol, id, side, stop_price, qty, std::nullopt);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::place_stop_limit_order(Side side, Price stop_price, Price limit_price, Qty qty) {
+    return place_stop_limit_order(kDefaultAccountId, kDefaultSymbol, side, stop_price, limit_price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_stop_limit_order(AccountId account_id, Side side, Price stop_price,
+                                                          Price limit_price, Qty qty) {
+    return place_stop_limit_order(account_id, kDefaultSymbol, side, stop_price, limit_price, qty);
+}
+
+std::vector<Event> MatchingEngine::place_stop_limit_order(AccountId account_id, const Symbol& symbol, Side side,
+                                                          Price stop_price, Price limit_price, Qty qty) {
+    const OrderId id = next_order_id_++;
+    std::vector<Event> events = place_stop_order_with_account_and_id(account_id, symbol, id, side, stop_price, qty, limit_price);
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::place_stop_order_with_account_and_id(AccountId account_id, const Symbol& symbol,
+                                                                        OrderId stop_id, Side side, Price stop_price,
+                                                                        Qty qty, std::optional<Price> limit_price) {
+    if (!is_valid_price(stop_price) || (limit_price.has_value() && !is_valid_price(*limit_price))) {
+        return {OrderRejected{side, limit_price.value_or(stop_price), qty, RejectReason::InvalidPrice, symbol}};
+    }
+    if (!is_valid_qty(qty)) {
+        return {OrderRejected{side, limit_price.value_or(stop_price), qty, RejectReason::InvalidQuantity, symbol}};
+    }
+
+    AccountSnapshot& account = accounts_[account_id];
+    if (account_id == kDefaultAccountId) {
+        account.cash_balance = std::max(account.cash_balance, kDefaultLegacyCash);
+        account.position_qty_by_symbol[symbol] = std::max(account.position_qty_by_symbol[symbol], kDefaultLegacyPosition);
+    }
+
+    const Price risk_price = limit_price.value_or(stop_price);
+    if (const auto risk_failure = validate_order_risk(account_id, symbol, side, risk_price, qty)) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "stop_order_rejected_risk_failure", 0, 0, 0, 0, stop_id, std::nullopt});
+        return {OrderRejected{side, risk_price, qty, *risk_failure, symbol}};
+    }
+
+    stop_orders_by_id_[stop_id] = StopOrderState{account_id, symbol, side, stop_price, qty, limit_price, stop_id};
+    pending_stop_ids_by_symbol_[symbol].push_back(stop_id);
+    append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "stop_order_accepted", 0, 0, 0, 0, stop_id, std::nullopt});
+    return {StopOrderAccepted{stop_id, side, stop_price, qty, limit_price, symbol}};
+}
+
+std::optional<Price> MatchingEngine::trigger_price(const Symbol& symbol) const {
+    if (const auto it = latest_mark_by_symbol_.find(symbol); it != latest_mark_by_symbol_.end()) {
+        return Price{static_cast<std::int64_t>(std::llround(it->second))};
+    }
+    const OrderBook* book = find_book(symbol);
+    if (book == nullptr) return std::nullopt;
+    const auto bid = book->best_bid();
+    const auto ask = book->best_ask();
+    if (bid.has_value() && ask.has_value() && bid->ticks < ask->ticks) {
+        return Price{(bid->ticks + ask->ticks) / 2};
+    }
+    return std::nullopt;
+}
+
+std::vector<Event> MatchingEngine::evaluate_stop_orders(const Symbol& symbol) {
+    std::vector<Event> out;
+    while (true) {
+        const std::optional<Price> current = trigger_price(symbol);
+        if (!current.has_value()) break;
+        std::vector<OrderId> ready;
+        auto& pending = pending_stop_ids_by_symbol_[symbol];
+        for (OrderId id : pending) {
+            const auto it = stop_orders_by_id_.find(id);
+            if (it == stop_orders_by_id_.end()) continue;
+            const StopOrderState& stop = it->second;
+            const bool triggers = stop.side == Side::Bid ? current->ticks >= stop.stop_price.ticks : current->ticks <= stop.stop_price.ticks;
+            if (triggers) ready.push_back(id);
+        }
+        if (ready.empty()) break;
+        std::sort(ready.begin(), ready.end());
+        bool any_resulting_trade = false;
+        for (OrderId id : ready) {
+            const auto it = stop_orders_by_id_.find(id);
+            if (it == stop_orders_by_id_.end()) continue;
+            StopOrderState stop = it->second;
+            stop_orders_by_id_.erase(it);
+            auto pending_it = pending_stop_ids_by_symbol_.find(symbol);
+            if (pending_it != pending_stop_ids_by_symbol_.end()) {
+                auto& ids = pending_it->second;
+                ids.erase(std::remove(ids.begin(), ids.end(), id), ids.end());
+            }
+            const OrderId resulting_order_id = next_order_id_++;
+            out.emplace_back(StopOrderTriggered{id, resulting_order_id, stop.side, stop.stop_price, stop.qty, stop.limit_price, symbol});
+            append_ledger_entry(AccountLedgerEntry{0, stop.account_id, symbol, "stop_order_triggered", 0, 0, 0, 0, id, resulting_order_id});
+            std::vector<Event> child = stop.limit_price.has_value()
+                ? place_limit_order_with_account_and_id(stop.account_id, symbol, resulting_order_id, stop.side, *stop.limit_price, stop.qty, TimeInForce::Gtc)
+                : place_market_order_with_account_and_id(stop.account_id, symbol, resulting_order_id, stop.side, stop.qty);
+            for (const Event& event : child) {
+                any_resulting_trade = any_resulting_trade || std::holds_alternative<TradeExecuted>(event);
+            }
+            out.insert(out.end(), child.begin(), child.end());
+        }
+        if (!any_resulting_trade) break;
+    }
+    return out;
 }
 
 std::vector<Event> MatchingEngine::cancel(OrderId id) {
@@ -566,6 +700,19 @@ std::vector<Event> MatchingEngine::cancel(OrderId id) {
 }
 
 std::vector<Event> MatchingEngine::cancel(AccountId account_id, OrderId id) {
+    if (const auto stop_it = stop_orders_by_id_.find(id); stop_it != stop_orders_by_id_.end()) {
+        if (stop_it->second.account_id != account_id) {
+            return {CancelRejected{id, RejectReason::WrongAccount, stop_it->second.symbol}};
+        }
+        const Symbol symbol = stop_it->second.symbol;
+        stop_orders_by_id_.erase(stop_it);
+        auto& ids = pending_stop_ids_by_symbol_[symbol];
+        ids.erase(std::remove(ids.begin(), ids.end(), id), ids.end());
+        std::vector<Event> events{OrderCanceled{id, symbol}};
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "stop_order_canceled", 0, 0, 0, 0, id, std::nullopt});
+        track_events(events);
+        return events;
+    }
     const auto ownership_it = order_ownership_by_id_.find(id);
     if (ownership_it == order_ownership_by_id_.end()) {
         return {CancelRejected{id, RejectReason::UnknownOrderId, kDefaultSymbol}};
@@ -648,6 +795,78 @@ std::vector<Event> MatchingEngine::replace_order(AccountId account_id, OrderId i
     return events;
 }
 
+std::vector<Event> MatchingEngine::replace_stop_order(OrderId id, Price new_stop_price, Qty new_qty) {
+    return replace_stop_order(kDefaultAccountId, id, new_stop_price, new_qty);
+}
+
+std::vector<Event> MatchingEngine::replace_stop_order(AccountId account_id, OrderId id, Price new_stop_price, Qty new_qty) {
+    const auto stop_it = stop_orders_by_id_.find(id);
+    if (stop_it == stop_orders_by_id_.end()) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId, kDefaultSymbol}};
+    }
+    if (stop_it->second.account_id != account_id) {
+        return {CancelRejected{id, RejectReason::WrongAccount, stop_it->second.symbol}};
+    }
+    if (stop_it->second.limit_price.has_value()) {
+        return replace_stop_limit_order(account_id, id, new_stop_price, *stop_it->second.limit_price, new_qty);
+    }
+    const Symbol symbol = stop_it->second.symbol;
+    const Side side = stop_it->second.side;
+    if (!is_valid_price(new_stop_price)) {
+        return {OrderRejected{side, new_stop_price, new_qty, RejectReason::InvalidPrice, symbol}};
+    }
+    if (!is_valid_qty(new_qty)) {
+        return {OrderRejected{side, new_stop_price, new_qty, RejectReason::InvalidQuantity, symbol}};
+    }
+    if (const auto risk_failure = validate_order_risk(account_id, symbol, side, new_stop_price, new_qty)) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_stop_rejected_risk_failure", 0, 0, 0, 0, id, std::nullopt});
+        return {OrderRejected{side, new_stop_price, new_qty, *risk_failure, symbol}};
+    }
+    stop_it->second.stop_price = new_stop_price;
+    stop_it->second.qty = new_qty;
+    std::vector<Event> events{OrderCanceled{id, symbol}, StopOrderAccepted{id, side, new_stop_price, new_qty, std::nullopt, symbol}};
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::replace_stop_limit_order(OrderId id, Price new_stop_price, Price new_limit_price,
+                                                            Qty new_qty) {
+    return replace_stop_limit_order(kDefaultAccountId, id, new_stop_price, new_limit_price, new_qty);
+}
+
+std::vector<Event> MatchingEngine::replace_stop_limit_order(AccountId account_id, OrderId id, Price new_stop_price,
+                                                            Price new_limit_price, Qty new_qty) {
+    const auto stop_it = stop_orders_by_id_.find(id);
+    if (stop_it == stop_orders_by_id_.end()) {
+        return {CancelRejected{id, RejectReason::UnknownOrderId, kDefaultSymbol}};
+    }
+    if (stop_it->second.account_id != account_id) {
+        return {CancelRejected{id, RejectReason::WrongAccount, stop_it->second.symbol}};
+    }
+    const Symbol symbol = stop_it->second.symbol;
+    const Side side = stop_it->second.side;
+    if (!is_valid_price(new_stop_price) || !is_valid_price(new_limit_price)) {
+        return {OrderRejected{side, new_limit_price, new_qty, RejectReason::InvalidPrice, symbol}};
+    }
+    if (!is_valid_qty(new_qty)) {
+        return {OrderRejected{side, new_limit_price, new_qty, RejectReason::InvalidQuantity, symbol}};
+    }
+    if (const auto risk_failure = validate_order_risk(account_id, symbol, side, new_limit_price, new_qty)) {
+        append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_stop_limit_rejected_risk_failure", 0, 0, 0, 0, id, std::nullopt});
+        return {OrderRejected{side, new_limit_price, new_qty, *risk_failure, symbol}};
+    }
+    stop_it->second.stop_price = new_stop_price;
+    stop_it->second.limit_price = new_limit_price;
+    stop_it->second.qty = new_qty;
+    std::vector<Event> events{OrderCanceled{id, symbol}, StopOrderAccepted{id, side, new_stop_price, new_qty, new_limit_price, symbol}};
+    std::vector<Event> triggered = evaluate_stop_orders(symbol);
+    events.insert(events.end(), triggered.begin(), triggered.end());
+    track_events(events);
+    return events;
+}
+
 BookDepth MatchingEngine::depth(std::size_t levels) const {
     return depth(kDefaultSymbol, levels);
 }
@@ -687,6 +906,10 @@ void MatchingEngine::bump_sequence_number_from_events(const std::vector<Event>& 
     for (const Event& event : events) {
         if (std::holds_alternative<OrderAccepted>(event)) {
             ++sequence_numbers_by_symbol_[std::get<OrderAccepted>(event).symbol];
+        } else if (std::holds_alternative<StopOrderAccepted>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<StopOrderAccepted>(event).symbol];
+        } else if (std::holds_alternative<StopOrderTriggered>(event)) {
+            ++sequence_numbers_by_symbol_[std::get<StopOrderTriggered>(event).symbol];
         } else if (std::holds_alternative<OrderCanceled>(event)) {
             ++sequence_numbers_by_symbol_[std::get<OrderCanceled>(event).symbol];
         } else if (std::holds_alternative<TradeExecuted>(event)) {

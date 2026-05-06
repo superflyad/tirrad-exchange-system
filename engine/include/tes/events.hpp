@@ -75,6 +75,25 @@ struct OrderExpired {
     Symbol symbol{kDefaultSymbol};
 };
 
+struct StopOrderAccepted {
+    OrderId id;
+    Side side;
+    Price stop_price;
+    Qty qty;
+    std::optional<Price> limit_price;
+    Symbol symbol{kDefaultSymbol};
+};
+
+struct StopOrderTriggered {
+    OrderId id;
+    OrderId resulting_order_id;
+    Side side;
+    Price stop_price;
+    Qty qty;
+    std::optional<Price> limit_price;
+    Symbol symbol{kDefaultSymbol};
+};
+
 struct TopOfBook {
     std::optional<Price> best_bid;
     std::optional<Price> best_ask;
@@ -82,6 +101,6 @@ struct TopOfBook {
 };
 
 using Event = std::variant<OrderAccepted, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
-                           OrderFilled, OrderExpired, TopOfBook>;
+                           OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook>;
 
 }  // namespace tes

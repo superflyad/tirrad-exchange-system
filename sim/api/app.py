@@ -10,9 +10,11 @@ from sim.api.errors import register_error_handlers
 from sim.api.execution.queue import SQLiteRunQueue
 from sim.api.routes.health import router as health_router
 from sim.api.routes.runs import router as runs_router
+from sim.api.routes.tournaments import router as tournaments_router
 from sim.api.services.replay_service import ReplayService
 from sim.api.services.run_service import RunService
 from sim.api.services.stream_service import StreamService
+from sim.api.services.tournament_service import TournamentService
 from sim.api.storage import DEFAULT_SQLITE_PATH, RunStore, create_run_store
 
 
@@ -40,9 +42,11 @@ def create_app(
     app.state.replay_service = ReplayService(run_store)
     app.state.queue_enabled = enabled
     app.state.run_queue = SQLiteRunQueue(queue_path) if enabled else None
+    app.state.tournament_service = TournamentService(run_store, app.state.run_service, app.state.run_queue)
     register_error_handlers(app)
     app.include_router(health_router)
     app.include_router(runs_router)
+    app.include_router(tournaments_router)
     return app
 
 

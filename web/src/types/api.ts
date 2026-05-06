@@ -1,4 +1,5 @@
 export type RunType = "session" | "backtest";
+export type TournamentType = "strategy_vs_strategy" | "strategy_vs_scenario" | "parameter_sweep" | "multi_symbol_sweep";
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "canceled";
 export type TimelineCategory = "command" | "event" | "snapshot" | "account" | "log";
 export type StreamCategory = "status" | "progress" | "event" | "snapshot" | "account" | "log" | "error" | "completed";
@@ -19,6 +20,44 @@ export interface RunSummary {
   polling_url?: string | null;
   stream_url?: string | null;
 }
+
+export interface TournamentRun {
+  tournament_id: string;
+  status: RunStatus;
+  tournament_type: TournamentType;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  config: JsonObject;
+  child_count: number;
+  completed_child_count: number;
+  failed_child_count: number;
+  error: string | null;
+}
+
+export interface TournamentResult {
+  rank: number;
+  child_run_id: string;
+  child_key: string;
+  status: RunStatus;
+  dimensions: JsonObject;
+  metrics: JsonObject;
+  score: number;
+  error: string | null;
+}
+
+export interface TournamentReport {
+  tournament_id: string;
+  status: RunStatus;
+  generated_at: string;
+  child_count: number;
+  completed_child_count: number;
+  failed_child_count: number;
+  results: TournamentResult[];
+  failures: TournamentResult[];
+}
+
+export interface TournamentChildrenResponse { tournament_id: string; children: JsonObject[]; }
 
 export interface WorkerSummary {
   worker_id: string;

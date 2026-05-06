@@ -12,7 +12,7 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from sim.api.models import RunStatus, RunType
-from sim.api.storage.base import RunRecord
+from sim.api.storage.base import RunRecord, TournamentRecord
 
 _SCHEMA_VERSION = 1
 _DEFAULT_TIMEOUT_SECONDS = 5.0
@@ -296,6 +296,132 @@ class SQLiteRunStore:
             )
         return True
 
+    def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord:
+        record = TournamentRecord(
+            tournament_id=uuid4().hex,
+            tournament_type=tournament_type,
+            status="pending",
+            created_at=datetime.now(UTC),
+            config=deepcopy(config),
+        )
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO tournaments (
+                    tournament_id, tournament_type, status, created_at, started_at, completed_at,
+                    config_json, report_json, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.tournament_id,
+                    record.tournament_type,
+                    record.status,
+                    _format_datetime(record.created_at),
+                    None,
+                    None,
+                    _encode_json(record.config),
+                    None,
+                    None,
+                ),
+            )
+        return deepcopy(record)
+
+    def update_tournament(
+        self,
+        tournament_id: str,
+        *,
+        status: RunStatus | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        report: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> TournamentRecord | None:
+        assignments: list[str] = []
+        values: list[Any] = []
+        if status is not None:
+            assignments.append("status = ?")
+            values.append(status)
+        if started_at is not None:
+            assignments.append("started_at = ?")
+            values.append(_format_datetime(started_at))
+        if completed_at is not None:
+            assignments.append("completed_at = ?")
+            values.append(_format_datetime(completed_at))
+        if report is not None:
+            assignments.append("report_json = ?")
+            values.append(_encode_json(report))
+        if error is not None:
+            assignments.append("error = ?")
+            values.append(error)
+        if assignments:
+            values.append(tournament_id)
+            with self._lock, self._connection:
+                self._connection.execute(
+                    f"UPDATE tournaments SET {', '.join(assignments)} WHERE tournament_id = ?",
+                    tuple(values),
+                )
+        return self.get_tournament(tournament_id)
+
+    def get_tournament(self, tournament_id: str) -> TournamentRecord | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM tournaments WHERE tournament_id = ?", (tournament_id,)
+            ).fetchone()
+            return self._tournament_from_row(row) if row is not None else None
+
+    def list_tournaments(self) -> list[TournamentRecord]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM tournaments ORDER BY created_at ASC, tournament_id ASC"
+            ).fetchall()
+            return [self._tournament_from_row(row) for row in rows]
+
+    def link_tournament_child(
+        self,
+        tournament_id: str,
+        *,
+        child_run_id: str,
+        child_key: str,
+        run_type: RunType,
+        dimensions: dict[str, Any],
+    ) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO tournament_children (
+                    tournament_id, child_run_id, child_key, run_type, dimensions_json
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(tournament_id, child_key) DO UPDATE SET
+                    child_run_id = excluded.child_run_id,
+                    run_type = excluded.run_type,
+                    dimensions_json = excluded.dimensions_json
+                """,
+                (tournament_id, child_run_id, child_key, run_type, _encode_json(dimensions)),
+            )
+
+    def list_tournament_children(self, tournament_id: str) -> list[dict[str, Any]] | None:
+        if self.get_tournament(tournament_id) is None:
+            return None
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM tournament_children
+                WHERE tournament_id = ?
+                ORDER BY child_key ASC
+                """,
+                (tournament_id,),
+            ).fetchall()
+        return [
+            {
+                "tournament_id": row["tournament_id"],
+                "child_run_id": row["child_run_id"],
+                "child_key": row["child_key"],
+                "run_type": row["run_type"],
+                "dimensions": _decode_json(row["dimensions_json"], {}),
+            }
+            for row in rows
+        ]
+
     def close(self) -> None:
         with self._lock:
             self._connection.close()
@@ -380,10 +506,46 @@ class SQLiteRunStore:
             CREATE INDEX IF NOT EXISTS idx_run_snapshots_lookup ON run_snapshots(run_id, step, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_snapshots_symbol ON run_snapshots(run_id, symbol, step, sequence);
             CREATE INDEX IF NOT EXISTS idx_run_accounts_lookup ON run_accounts(run_id, account_id, symbol);
+            CREATE TABLE IF NOT EXISTS tournaments (
+                tournament_id TEXT PRIMARY KEY,
+                tournament_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                config_json TEXT NOT NULL,
+                report_json TEXT,
+                error TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS tournament_children (
+                tournament_id TEXT NOT NULL REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+                child_run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+                child_key TEXT NOT NULL,
+                run_type TEXT NOT NULL,
+                dimensions_json TEXT NOT NULL,
+                PRIMARY KEY (tournament_id, child_key)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_run_logs_lookup ON run_logs(run_id, sequence);
+            CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status);
+            CREATE INDEX IF NOT EXISTS idx_tournament_children_run ON tournament_children(child_run_id);
             """
         )
         self._connection.commit()
+
+    def _tournament_from_row(self, row: sqlite3.Row) -> TournamentRecord:
+        return TournamentRecord(
+            tournament_id=row["tournament_id"],
+            tournament_type=row["tournament_type"],
+            status=row["status"],
+            created_at=_parse_datetime(row["created_at"]),
+            started_at=_parse_datetime(row["started_at"]),
+            completed_at=_parse_datetime(row["completed_at"]),
+            config=_decode_json(row["config_json"], {}),
+            report=_decode_json(row["report_json"], {}),
+            error=row["error"],
+        )
 
     def _record_from_row(self, row: sqlite3.Row) -> RunRecord:
         run_id = row["run_id"]

@@ -28,6 +28,21 @@ class RunRecord:
     error: str | None = None
 
 
+@dataclass
+class TournamentRecord:
+    """Strict API-facing tournament metadata stored by TES backends."""
+
+    tournament_id: str
+    tournament_type: str
+    status: RunStatus
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+    report: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+
 class RunStore(Protocol):
     """Storage interface for API run lifecycle and result artifacts."""
 
@@ -110,3 +125,32 @@ class RunStore(Protocol):
     ) -> list[dict[str, Any]] | None: ...
 
     def append_log(self, run_id: str, log: dict[str, Any]) -> bool: ...
+
+    def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord: ...
+
+    def update_tournament(
+        self,
+        tournament_id: str,
+        *,
+        status: RunStatus | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        report: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> TournamentRecord | None: ...
+
+    def get_tournament(self, tournament_id: str) -> TournamentRecord | None: ...
+
+    def list_tournaments(self) -> list[TournamentRecord]: ...
+
+    def link_tournament_child(
+        self,
+        tournament_id: str,
+        *,
+        child_run_id: str,
+        child_key: str,
+        run_type: RunType,
+        dimensions: dict[str, Any],
+    ) -> None: ...
+
+    def list_tournament_children(self, tournament_id: str) -> list[dict[str, Any]] | None: ...

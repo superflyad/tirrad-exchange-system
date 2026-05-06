@@ -38,6 +38,11 @@ The default bind address is `127.0.0.1:8000`. Local API runs use SQLite by defau
 - `GET /runs/{run_id}/snapshots` — fetch market data snapshots for a run. Supports `symbol`, `limit`, and `offset` query parameters.
 - `GET /runs/{run_id}/accounts` — fetch account state snapshots for a run. Supports `account_id` and `symbol` query parameters.
 - `GET /runs/{run_id}/logs` — fetch stored progress/log messages for a run. Supports `limit` and `offset` query parameters.
+- `GET /runs/{run_id}/timeline` — fetch a normalized post-run inspection timeline. Supports `symbol`, `category`, `type`, `limit`, and `offset` query parameters.
+- `GET /runs/{run_id}/orders/{order_id}/timeline` — fetch timeline entries that reference an order ID. Supports `symbol`, `category`, `type`, `limit`, and `offset` query parameters.
+- `GET /runs/{run_id}/accounts/{account_id}/timeline` — fetch timeline entries that reference an account ID. Supports `symbol`, `category`, `type`, `limit`, and `offset` query parameters.
+- `POST /runs/{run_id}/replay` — reconstruct or replay a persisted run and return replay status.
+- `GET /runs/{run_id}/summary` — fetch an inspection-oriented run summary with event, trade, volume, price, and position totals.
 - `DELETE /runs/{run_id}` — remove a run and its stored artifacts.
 
 ## Session request example
@@ -144,6 +149,93 @@ Events are returned with the canonical TES shape:
 }
 ```
 
+Timeline response shape:
+
+```json
+{
+  "run_id": "6fcd1b4e7dc94bb8b61125d2af89eaa1",
+  "timeline": [
+    {
+      "step": 2,
+      "timestamp": null,
+      "sequence": 1,
+      "symbol": "DEFAULT",
+      "category": "event",
+      "type": "TradeExecuted",
+      "summary": "TradeExecuted qty=1 price=100",
+      "payload": {
+        "type": "TradeExecuted",
+        "data": {
+          "price": 100,
+          "qty": 1,
+          "maker_order_id": 1,
+          "taker_order_id": 2
+        }
+      }
+    }
+  ]
+}
+```
+
+Timeline entries normalize persisted artifacts into these fields:
+
+- `step` — simulation/backtest step when present in the payload.
+- `timestamp` — timestamp-like payload field when present; otherwise `null`.
+- `sequence` — stable artifact sequence within its persisted category.
+- `symbol` — directly stored symbol, single-symbol snapshot/account symbol, or the run's single configured symbol when inferable.
+- `category` — one of `command`, `event`, `snapshot`, `account`, or `log`. Current API storage persists events, snapshots, accounts, and logs; command entries appear only when a future runner persists command artifacts.
+- `type` — event type, snapshot/account default type, or log level.
+- `summary` — short human-readable description derived from stable public payload fields.
+- `payload` — original persisted JSON payload. Event payloads keep the canonical `{"type":"...","data":{...}}` shape.
+
+Timeline examples:
+
+```bash
+curl -s 'http://127.0.0.1:8000/runs/6fcd1b4e7dc94bb8b61125d2af89eaa1/timeline?symbol=DEFAULT&category=event&limit=25&offset=0'
+curl -s 'http://127.0.0.1:8000/runs/6fcd1b4e7dc94bb8b61125d2af89eaa1/orders/1/timeline'
+curl -s 'http://127.0.0.1:8000/runs/6fcd1b4e7dc94bb8b61125d2af89eaa1/accounts/acct-1/timeline'
+```
+
+Replay response shape:
+
+```json
+{
+  "run_id": "6fcd1b4e7dc94bb8b61125d2af89eaa1",
+  "status": "reconstructed",
+  "message": "Run was reconstructed from persisted artifacts; engine re-execution is unavailable.",
+  "total_events": 12,
+  "total_snapshots": 5,
+  "total_accounts": 1,
+  "total_logs": 0,
+  "event_count_matches": true,
+  "event_hash_matches": null
+}
+```
+
+Replay status values are `replayed`, `reconstructed`, `unavailable`, and `mismatch`. For the current API, replay is a read-only reconstruction from persisted run artifacts unless a future command stream is available for deterministic engine re-execution and comparison.
+
+Summary response shape:
+
+```json
+{
+  "run_id": "6fcd1b4e7dc94bb8b61125d2af89eaa1",
+  "run_type": "backtest",
+  "status": "completed",
+  "symbols": ["DEFAULT"],
+  "total_steps": 5,
+  "total_orders": 2,
+  "total_events": 12,
+  "total_trades": 1,
+  "total_snapshots": 5,
+  "total_rejections": 0,
+  "total_volume": 1,
+  "traded_notional": 100,
+  "final_prices": {"DEFAULT": 100.5},
+  "final_positions": {"DEFAULT": 1},
+  "error": null
+}
+```
+
 Error response shape:
 
 ```json
@@ -168,7 +260,7 @@ The SQLite backend uses a hybrid schema designed for fast local analytics while 
 - `run_reports` stores the full report JSON for direct report retrieval.
 - `run_events` stores one event per row with indexed `run_id`, `sequence`, `event_type`, `symbol`, and optional `step`, plus the canonical event JSON payload.
 - `run_snapshots` stores one snapshot per row with indexed `run_id`, `step`, `symbol`, and the snapshot JSON payload.
-- `run_accounts` stores one account-state payload per row with indexed `run_id`, `account_id`, and `symbol`.
+- `run_accounts` stores one account-state payload per row with indexed `run_id`, `account_id`, `symbol`, and sequence-backed pagination.
 - `run_logs` is reserved for progress/log payloads and supports ordered retrieval even when current synchronous runners do not emit logs.
 
 SQLite initialization enables foreign keys, WAL journal mode for file-backed databases, `synchronous=NORMAL`, and a 5-second busy timeout. Indexes are created for `run_id`, `run_type`, `status`, `created_at`, and artifact lookup paths such as event type, symbol, snapshot step, and account filters.
@@ -182,4 +274,6 @@ Expected local-use limits: this backend is intended for single-node development,
 - Streaming is not implemented yet; WebSocket or Server-Sent Events can be layered onto the run service later.
 - Authentication and authorization are not implemented.
 - Run cancellation is modeled as a future state but not yet wired to an execution interrupt.
+- Replay currently reconstructs from persisted artifacts and does not re-run the C++ engine unless a future persisted command stream is added.
+- Timeline command entries are reserved for persisted command artifacts; current session/backtest storage exposes events, snapshots, accounts, and logs.
 - Postgres/distributed execution, deeper replay indexing, and dashboard APIs are planned extension points.

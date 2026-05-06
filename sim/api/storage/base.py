@@ -24,6 +24,7 @@ class RunRecord:
     events: list[dict[str, Any]] = field(default_factory=list)
     snapshots: list[dict[str, Any]] = field(default_factory=list)
     accounts: list[dict[str, Any]] = field(default_factory=list)
+    logs: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
 
 
@@ -96,6 +97,8 @@ class RunStore(Protocol):
         *,
         account_id: str | None = None,
         symbol: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]] | None: ...
 
     def get_logs(

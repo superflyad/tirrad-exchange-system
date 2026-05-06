@@ -170,3 +170,131 @@ def test_request_validation_returns_clean_error() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def _client_with_inspectable_run() -> tuple[TestClient, str]:
+    store = InMemoryRunStore()
+    record = store.create_run(run_type="backtest", config={"strategy": "demo", "symbols": ["TES"]})
+    stored = store.store_result(
+        record.run_id,
+        report={
+            "total_orders": 2,
+            "total_trades": 1,
+            "total_volume": 5,
+            "traded_notional": 505,
+            "rejected_orders": 1,
+            "final_positions": {"TES": 5},
+        },
+        events=[
+            {"type": "OrderAccepted", "data": {"order_id": 101, "symbol": "TES", "qty": 5, "price": 100, "step": 1}},
+            {
+                "type": "TradeExecuted",
+                "data": {"maker_order_id": 101, "taker_order_id": 202, "symbol": "TES", "qty": 5, "price": 101, "step": 2},
+            },
+            {"type": "OrderRejected", "data": {"symbol": "ALT", "qty": 1, "price": 99, "reason": "NoLiquidity", "step": 3}},
+        ],
+        snapshots=[
+            {"step": 1, "symbols": {"TES": {"bid": 100, "ask": 102}}},
+            {"step": 2, "symbols": {"TES": {"bid": 101, "ask": 103}}},
+        ],
+        accounts=[
+            {"account_id": "acct-1", "step": 2, "positions": {"TES": 5}, "mark_to_market": {"TES": 510}}
+        ],
+        logs=[{"level": "info", "message": "done", "step": 3}],
+    )
+    assert stored is not None
+    store.update_run_status(record.run_id, status="completed")
+    return TestClient(create_app(store)), record.run_id
+
+
+def test_run_timeline_endpoint_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/timeline")
+
+    assert response.status_code == 200
+    timeline = response.json()["timeline"]
+    assert {"step", "timestamp", "sequence", "symbol", "category", "type", "summary", "payload"} <= set(timeline[0])
+    assert {entry["category"] for entry in timeline} >= {"event", "snapshot", "account", "log"}
+
+
+def test_run_timeline_pagination_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    first = client.get(f"/runs/{run_id}/timeline?limit=1").json()["timeline"]
+    second = client.get(f"/runs/{run_id}/timeline?limit=1&offset=1").json()["timeline"]
+
+    assert len(first) == 1
+    assert len(second) == 1
+    assert first[0] != second[0]
+
+
+def test_run_timeline_symbol_filter_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/timeline?symbol=TES")
+
+    assert response.status_code == 200
+    timeline = response.json()["timeline"]
+    assert timeline
+    assert all(entry["symbol"] == "TES" or "TES" in str(entry["payload"]) for entry in timeline)
+
+
+def test_run_timeline_category_filter_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/timeline?category=event")
+
+    assert response.status_code == 200
+    assert {entry["category"] for entry in response.json()["timeline"]} == {"event"}
+
+
+def test_run_order_timeline_works_for_order_ids_in_events() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/orders/101/timeline")
+
+    assert response.status_code == 200
+    timeline = response.json()["timeline"]
+    assert [entry["type"] for entry in timeline] == ["OrderAccepted", "TradeExecuted"]
+
+
+def test_run_account_timeline_works_for_account_payloads() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/accounts/acct-1/timeline")
+
+    assert response.status_code == 200
+    timeline = response.json()["timeline"]
+    assert len(timeline) == 1
+    assert timeline[0]["category"] == "account"
+
+
+def test_run_replay_endpoint_returns_valid_status() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.post(f"/runs/{run_id}/replay")
+
+    assert response.status_code == 200
+    assert response.json()["status"] in {"replayed", "reconstructed", "unavailable", "mismatch"}
+
+
+def test_run_summary_endpoint_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/summary")
+
+    assert response.status_code == 200
+    summary = response.json()
+    assert summary["run_id"] == run_id
+    assert summary["symbols"] == ["ALT", "TES"]
+    assert summary["total_events"] == 3
+    assert summary["total_trades"] == 1
+    assert summary["final_positions"] == {"TES": 5}
+
+
+def test_missing_run_timeline_returns_404() -> None:
+    response = _client().get("/runs/missing/timeline")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "run_not_found"

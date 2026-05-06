@@ -236,6 +236,8 @@ class SQLiteRunStore:
         *,
         account_id: str | None = None,
         symbol: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]] | None:
         if not self._run_exists(run_id):
             return None
@@ -248,7 +250,7 @@ class SQLiteRunStore:
             clauses.append("symbol = ?")
             values.append(symbol)
         return self._fetch_payloads(
-            "run_accounts", clauses, values, order_by="sequence ASC", limit=None, offset=0
+            "run_accounts", clauses, values, order_by="sequence ASC", limit=limit, offset=offset
         )
 
     def get_logs(
@@ -372,6 +374,7 @@ class SQLiteRunStore:
             events=self.get_events(run_id) or [],
             snapshots=self.get_snapshots(run_id) or [],
             accounts=self.get_accounts(run_id) or [],
+            logs=self.get_logs(run_id) or [],
             error=row["error"],
         )
 

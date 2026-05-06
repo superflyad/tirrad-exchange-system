@@ -242,3 +242,28 @@ TEST_CASE("replay preserves hidden submissions and iceberg replenishment determi
         }
     }
 }
+
+TEST_CASE("replay preserves halt resume and price band commands") {
+    tes::MatchingEngine engine;
+    tes::ReplayLog log;
+
+    auto bands = engine.set_price_bands("AAA", tes::Price{95}, tes::Price{105});
+    log.record(tes::SetPriceBandsCommand{"AAA", tes::Price{95}, tes::Price{105}}, bands);
+    auto halt = engine.halt_symbol("AAA", "news");
+    log.record(tes::HaltSymbolCommand{"AAA", "news"}, halt);
+    auto rejected = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    log.record(tes::LimitOrderCommand{tes::Side::Bid, tes::Price{100}, tes::Qty{1}, "AAA"}, rejected);
+    auto resumed = engine.resume_symbol("AAA");
+    log.record(tes::ResumeSymbolCommand{"AAA"}, resumed);
+    auto cleared = engine.clear_price_bands("AAA");
+    log.record(tes::ClearPriceBandsCommand{"AAA"}, cleared);
+
+    const auto replayed = tes::replay_commands(log.entries());
+    REQUIRE(replayed.size() == log.entries().size());
+    CHECK(std::holds_alternative<tes::PriceBandUpdated>(replayed[0].front()));
+    CHECK(std::holds_alternative<tes::SymbolHalted>(replayed[1].front()));
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(replayed[2].front()));
+    CHECK(std::get<tes::OrderRejected>(replayed[2].front()).reason == tes::RejectReason::SymbolHalted);
+    CHECK(std::holds_alternative<tes::SymbolResumed>(replayed[3].front()));
+    CHECK(std::holds_alternative<tes::PriceBandUpdated>(replayed[4].front()));
+}

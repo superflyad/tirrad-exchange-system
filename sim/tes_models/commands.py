@@ -75,6 +75,29 @@ class SetTradingPhaseCommand:
 
 
 @dataclass(frozen=True)
+class HaltSymbolCommand:
+    symbol: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class ResumeSymbolCommand:
+    symbol: str
+
+
+@dataclass(frozen=True)
+class SetPriceBandsCommand:
+    symbol: str
+    lower_price: int
+    upper_price: int
+
+
+@dataclass(frozen=True)
+class ClearPriceBandsCommand:
+    symbol: str
+
+
+@dataclass(frozen=True)
 class UncrossAuctionCommand:
     symbol: str = DEFAULT_SYMBOL
 
@@ -89,6 +112,10 @@ TesCommand: TypeAlias = (
     | CancelOrderCommand
     | ReplaceOrderCommand
     | SetTradingPhaseCommand
+    | HaltSymbolCommand
+    | ResumeSymbolCommand
+    | SetPriceBandsCommand
+    | ClearPriceBandsCommand
     | UncrossAuctionCommand
 )
 
@@ -234,6 +261,25 @@ def parse_command(raw: dict[str, Any]) -> TesCommand:
     if command_type == "SetTradingPhase":
         _require_exact_keys(data, {"symbol", "phase"}, "SetTradingPhase.data")
         return SetTradingPhaseCommand(symbol=_require_symbol(data["symbol"]), phase=_require_trading_phase(data["phase"]))
+
+    if command_type == "HaltSymbol":
+        _require_exact_keys(data, {"symbol", "reason"}, "HaltSymbol.data")
+        reason = data["reason"]
+        if not isinstance(reason, str):
+            raise ValueError("reason must be a string")
+        return HaltSymbolCommand(symbol=_require_symbol(data["symbol"]), reason=reason)
+
+    if command_type == "ResumeSymbol":
+        _require_exact_keys(data, {"symbol"}, "ResumeSymbol.data")
+        return ResumeSymbolCommand(symbol=_require_symbol(data["symbol"]))
+
+    if command_type == "SetPriceBands":
+        _require_exact_keys(data, {"symbol", "lower_price", "upper_price"}, "SetPriceBands.data")
+        return SetPriceBandsCommand(symbol=_require_symbol(data["symbol"]), lower_price=_require_positive_int(data["lower_price"], "lower_price"), upper_price=_require_positive_int(data["upper_price"], "upper_price"))
+
+    if command_type == "ClearPriceBands":
+        _require_exact_keys(data, {"symbol"}, "ClearPriceBands.data")
+        return ClearPriceBandsCommand(symbol=_require_symbol(data["symbol"]))
 
     if command_type == "UncrossAuction":
         _require_command_keys(data, set(), "UncrossAuction.data")

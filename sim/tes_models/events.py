@@ -17,6 +17,10 @@ RejectReasonLiteral: TypeAlias = Literal[
     "ShortSellingDisabled",
     "MarginRequirementFailed",
     "MaintenanceMarginBreached",
+    "SymbolHalted",
+    "PriceBandViolation",
+    "CircuitBreakerViolation",
+    "AuctionPriceOutOfBand",
 ]
 
 
@@ -158,6 +162,31 @@ class AuctionUncrossData:
 
 
 @dataclass(frozen=True)
+class SymbolHaltedData:
+    symbol: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class SymbolResumedData:
+    symbol: str
+
+
+@dataclass(frozen=True)
+class PriceBandUpdatedData:
+    symbol: str
+    lower_price: int | None
+    upper_price: int | None
+
+
+@dataclass(frozen=True)
+class CircuitBreakerTriggeredData:
+    symbol: str
+    price: int
+    reason: str
+
+
+@dataclass(frozen=True)
 class IndicativePriceUpdatedData:
     symbol: str
     price: int | None
@@ -268,6 +297,30 @@ class AuctionUncross:
 
 
 @dataclass(frozen=True)
+class SymbolHalted:
+    type: Literal["SymbolHalted"]
+    data: SymbolHaltedData
+
+
+@dataclass(frozen=True)
+class SymbolResumed:
+    type: Literal["SymbolResumed"]
+    data: SymbolResumedData
+
+
+@dataclass(frozen=True)
+class PriceBandUpdated:
+    type: Literal["PriceBandUpdated"]
+    data: PriceBandUpdatedData
+
+
+@dataclass(frozen=True)
+class CircuitBreakerTriggered:
+    type: Literal["CircuitBreakerTriggered"]
+    data: CircuitBreakerTriggeredData
+
+
+@dataclass(frozen=True)
 class IndicativePriceUpdated:
     type: Literal["IndicativePriceUpdated"]
     data: IndicativePriceUpdatedData
@@ -291,6 +344,10 @@ TesEngineEvent: TypeAlias = (
     | AuctionStarted
     | AuctionEnded
     | AuctionUncross
+    | SymbolHalted
+    | SymbolResumed
+    | PriceBandUpdated
+    | CircuitBreakerTriggered
     | IndicativePriceUpdated
 )
 
@@ -364,6 +421,10 @@ def _require_reject_reason(value: Any) -> RejectReasonLiteral:
         "ShortSellingDisabled",
         "MarginRequirementFailed",
         "MaintenanceMarginBreached",
+        "SymbolHalted",
+        "PriceBandViolation",
+        "CircuitBreakerViolation",
+        "AuctionPriceOutOfBand",
     }
     if value not in allowed:
         raise ValueError(f"reason must be one of {', '.join(sorted(allowed))}")
@@ -565,6 +626,28 @@ def parse_event(raw: dict[str, Any]) -> TesEngineEvent:
             data=OrderExpiredData(order_id=_require_int(data["order_id"], "order_id"), symbol=_optional_symbol(data)),
         )
 
+
+    if event_type == "SymbolHalted":
+        _require_exact_keys(data, {"symbol", "reason"}, "SymbolHalted.data")
+        reason = data["reason"]
+        if not isinstance(reason, str):
+            raise ValueError("reason must be a string")
+        return SymbolHalted(type="SymbolHalted", data=SymbolHaltedData(symbol=_require_symbol(data["symbol"]), reason=reason))
+
+    if event_type == "SymbolResumed":
+        _require_exact_keys(data, {"symbol"}, "SymbolResumed.data")
+        return SymbolResumed(type="SymbolResumed", data=SymbolResumedData(symbol=_require_symbol(data["symbol"])))
+
+    if event_type == "PriceBandUpdated":
+        _require_exact_keys(data, {"symbol", "lower_price", "upper_price"}, "PriceBandUpdated.data")
+        return PriceBandUpdated(type="PriceBandUpdated", data=PriceBandUpdatedData(symbol=_require_symbol(data["symbol"]), lower_price=_require_optional_int(data["lower_price"], "lower_price"), upper_price=_require_optional_int(data["upper_price"], "upper_price")))
+
+    if event_type == "CircuitBreakerTriggered":
+        _require_exact_keys(data, {"symbol", "price", "reason"}, "CircuitBreakerTriggered.data")
+        reason = data["reason"]
+        if not isinstance(reason, str):
+            raise ValueError("reason must be a string")
+        return CircuitBreakerTriggered(type="CircuitBreakerTriggered", data=CircuitBreakerTriggeredData(symbol=_require_symbol(data["symbol"]), price=_require_int(data["price"], "price"), reason=reason))
 
     if event_type == "AuctionStarted":
         _require_exact_keys(data, {"symbol", "phase"}, "AuctionStarted.data")

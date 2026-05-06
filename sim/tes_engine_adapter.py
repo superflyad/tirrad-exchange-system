@@ -5,12 +5,16 @@ from typing import Any
 from sim.tes_models import TesEngineEvent, parse_events
 from sim.tes_models.commands import (
     CancelOrderCommand,
+    ClearPriceBandsCommand,
+    HaltSymbolCommand,
     LimitOrderCommand,
     HiddenOrderCommand,
     IcebergOrderCommand,
     MarketOrderCommand,
     ReplaceOrderCommand,
+    SetPriceBandsCommand,
     SetTradingPhaseCommand,
+    ResumeSymbolCommand,
     StopLimitOrderCommand,
     StopOrderCommand,
     TesCommand,
@@ -55,6 +59,18 @@ def execute_command(engine: Any, command: TesCommand) -> list[TesEngineEvent]:
 
     if isinstance(command, SetTradingPhaseCommand):
         return parse_events(engine.set_trading_phase(command.symbol, command.phase))
+
+    if isinstance(command, HaltSymbolCommand):
+        return parse_events(engine.halt_symbol(command.symbol, command.reason))
+
+    if isinstance(command, ResumeSymbolCommand):
+        return parse_events(engine.resume_symbol(command.symbol))
+
+    if isinstance(command, SetPriceBandsCommand):
+        return parse_events(engine.set_price_bands(command.symbol, command.lower_price, command.upper_price))
+
+    if isinstance(command, ClearPriceBandsCommand):
+        return parse_events(engine.clear_price_bands(command.symbol))
 
     if isinstance(command, UncrossAuctionCommand):
         return parse_events(engine.uncross(command.symbol))

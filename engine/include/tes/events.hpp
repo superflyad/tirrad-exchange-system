@@ -19,6 +19,10 @@ enum class RejectReason {
     ShortSellingDisabled,
     MarginRequirementFailed,
     MaintenanceMarginBreached,
+    SymbolHalted,
+    PriceBandViolation,
+    CircuitBreakerViolation,
+    AuctionPriceOutOfBand,
 };
 
 struct OrderAccepted {
@@ -132,6 +136,31 @@ struct TopOfBook {
     Symbol symbol{kDefaultSymbol};
 };
 
+struct SymbolHalted {
+    Symbol symbol{kDefaultSymbol};
+    std::string reason;
+    [[nodiscard]] bool operator==(const SymbolHalted&) const = default;
+};
+
+struct SymbolResumed {
+    Symbol symbol{kDefaultSymbol};
+    [[nodiscard]] bool operator==(const SymbolResumed&) const = default;
+};
+
+struct PriceBandUpdated {
+    Symbol symbol{kDefaultSymbol};
+    std::optional<Price> lower_price;
+    std::optional<Price> upper_price;
+    [[nodiscard]] bool operator==(const PriceBandUpdated&) const = default;
+};
+
+struct CircuitBreakerTriggered {
+    Symbol symbol{kDefaultSymbol};
+    Price price{};
+    std::string reason;
+    [[nodiscard]] bool operator==(const CircuitBreakerTriggered&) const = default;
+};
+
 struct AuctionStarted {
     Symbol symbol{kDefaultSymbol};
     TradingPhase phase{TradingPhase::OpeningAuction};
@@ -161,7 +190,7 @@ struct IndicativePriceUpdated {
 };
 
 using Event = std::variant<OrderAccepted, HiddenOrderAccepted, IcebergOrderAccepted, IcebergReplenished, OrderRejected, OrderCanceled, CancelRejected, TradeExecuted, OrderPartiallyFilled,
-                           OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook, AuctionStarted,
+                           OrderFilled, OrderExpired, StopOrderAccepted, StopOrderTriggered, TopOfBook, SymbolHalted, SymbolResumed, PriceBandUpdated, CircuitBreakerTriggered, AuctionStarted,
                            AuctionEnded, AuctionUncross, IndicativePriceUpdated>;
 
 }  // namespace tes

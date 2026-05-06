@@ -52,6 +52,14 @@ namespace tes {
             return "MarginRequirementFailed";
         case RejectReason::MaintenanceMarginBreached:
             return "MaintenanceMarginBreached";
+        case RejectReason::SymbolHalted:
+            return "SymbolHalted";
+        case RejectReason::PriceBandViolation:
+            return "PriceBandViolation";
+        case RejectReason::CircuitBreakerViolation:
+            return "CircuitBreakerViolation";
+        case RejectReason::AuctionPriceOutOfBand:
+            return "AuctionPriceOutOfBand";
     }
 
     return "Unknown";
@@ -143,6 +151,24 @@ namespace tes {
                     stream << "nullopt";
                 }
                 stream << "}";
+                return stream.str();
+            }
+
+            else if constexpr (std::is_same_v<T, SymbolHalted>) {
+                stream << "SymbolHalted{symbol=" << value.symbol << ", reason=" << value.reason << "}";
+                return stream.str();
+            }
+            else if constexpr (std::is_same_v<T, SymbolResumed>) {
+                stream << "SymbolResumed{symbol=" << value.symbol << "}";
+                return stream.str();
+            }
+            else if constexpr (std::is_same_v<T, PriceBandUpdated>) {
+                stream << "PriceBandUpdated{symbol=" << value.symbol << "}";
+                return stream.str();
+            }
+            else if constexpr (std::is_same_v<T, CircuitBreakerTriggered>) {
+                stream << "CircuitBreakerTriggered{symbol=" << value.symbol << ", price=" << to_string(value.price)
+                       << ", reason=" << value.reason << "}";
                 return stream.str();
             }
 

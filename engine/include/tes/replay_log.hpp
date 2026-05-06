@@ -54,11 +54,30 @@ struct SetTradingPhaseCommand {
     TradingPhase phase{TradingPhase::Continuous};
 };
 
+struct HaltSymbolCommand {
+    Symbol symbol{kDefaultSymbol};
+    std::string reason;
+};
+
+struct ResumeSymbolCommand {
+    Symbol symbol{kDefaultSymbol};
+};
+
+struct SetPriceBandsCommand {
+    Symbol symbol{kDefaultSymbol};
+    Price lower_price{};
+    Price upper_price{};
+};
+
+struct ClearPriceBandsCommand {
+    Symbol symbol{kDefaultSymbol};
+};
+
 struct AuctionUncrossCommand {
     Symbol symbol{kDefaultSymbol};
 };
 
-using ReplayCommand = std::variant<LimitOrderCommand, HiddenOrderCommand, IcebergOrderCommand, MarketOrderCommand, CancelOrderCommand, SetTradingPhaseCommand, AuctionUncrossCommand>;
+using ReplayCommand = std::variant<LimitOrderCommand, HiddenOrderCommand, IcebergOrderCommand, MarketOrderCommand, CancelOrderCommand, SetTradingPhaseCommand, HaltSymbolCommand, ResumeSymbolCommand, SetPriceBandsCommand, ClearPriceBandsCommand, AuctionUncrossCommand>;
 
 struct ReplayEntry {
     std::size_t sequence;
@@ -111,6 +130,10 @@ struct ReplayEntry {
             if constexpr (std::is_same_v<T, StopOrderAccepted>) return "StopOrderAccepted";
             if constexpr (std::is_same_v<T, StopOrderTriggered>) return "StopOrderTriggered";
             if constexpr (std::is_same_v<T, TopOfBook>) return "TopOfBook";
+            if constexpr (std::is_same_v<T, SymbolHalted>) return "SymbolHalted";
+            if constexpr (std::is_same_v<T, SymbolResumed>) return "SymbolResumed";
+            if constexpr (std::is_same_v<T, PriceBandUpdated>) return "PriceBandUpdated";
+            if constexpr (std::is_same_v<T, CircuitBreakerTriggered>) return "CircuitBreakerTriggered";
             if constexpr (std::is_same_v<T, AuctionStarted>) return "AuctionStarted";
             if constexpr (std::is_same_v<T, AuctionEnded>) return "AuctionEnded";
             if constexpr (std::is_same_v<T, AuctionUncross>) return "AuctionUncross";
@@ -185,6 +208,19 @@ struct ReplayEntry {
             } else if constexpr (std::is_same_v<T, SetTradingPhaseCommand>) {
                 out << "{\"type\":\"SetTradingPhaseCommand\",\"data\":{\"symbol\":\""
                     << json_escape(value.symbol) << "\",\"phase\":\"" << trading_phase_name(value.phase) << "\"}}";
+            } else if constexpr (std::is_same_v<T, HaltSymbolCommand>) {
+                out << "{\"type\":\"HaltSymbolCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\",\"reason\":\"" << json_escape(value.reason) << "\"}}";
+            } else if constexpr (std::is_same_v<T, ResumeSymbolCommand>) {
+                out << "{\"type\":\"ResumeSymbolCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
+            } else if constexpr (std::is_same_v<T, SetPriceBandsCommand>) {
+                out << "{\"type\":\"SetPriceBandsCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\",\"lower_price\":" << value.lower_price.ticks
+                    << ",\"upper_price\":" << value.upper_price.ticks << "}}";
+            } else if constexpr (std::is_same_v<T, ClearPriceBandsCommand>) {
+                out << "{\"type\":\"ClearPriceBandsCommand\",\"data\":{\"symbol\":\""
+                    << json_escape(value.symbol) << "\"}}";
             } else {
                 out << "{\"type\":\"AuctionUncrossCommand\",\"data\":{\"symbol\":\""
                     << json_escape(value.symbol) << "\"}}";
@@ -271,6 +307,14 @@ class ReplayLog {
                     return engine.cancel(command.id);
                 } else if constexpr (std::is_same_v<T, SetTradingPhaseCommand>) {
                     return engine.set_trading_phase(command.symbol, command.phase);
+                } else if constexpr (std::is_same_v<T, HaltSymbolCommand>) {
+                    return engine.halt_symbol(command.symbol, command.reason);
+                } else if constexpr (std::is_same_v<T, ResumeSymbolCommand>) {
+                    return engine.resume_symbol(command.symbol);
+                } else if constexpr (std::is_same_v<T, SetPriceBandsCommand>) {
+                    return engine.set_price_bands(command.symbol, command.lower_price, command.upper_price);
+                } else if constexpr (std::is_same_v<T, ClearPriceBandsCommand>) {
+                    return engine.clear_price_bands(command.symbol);
                 } else {
                     return engine.uncross(command.symbol);
                 }

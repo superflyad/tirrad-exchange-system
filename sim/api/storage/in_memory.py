@@ -129,6 +129,8 @@ class InMemoryRunStore:
         *,
         account_id: str | None = None,
         symbol: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]] | None:
         record = self.get_run(run_id)
         if record is None:
@@ -138,7 +140,7 @@ class InMemoryRunStore:
             for account in record.accounts
             if _matches_account(account, account_id=account_id, symbol=symbol)
         ]
-        return deepcopy(accounts)
+        return deepcopy(_page(accounts, limit=limit, offset=offset))
 
     def get_logs(
         self,
@@ -147,7 +149,10 @@ class InMemoryRunStore:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict[str, Any]] | None:
-        return [] if self.get_run(run_id) is not None else None
+        record = self.get_run(run_id)
+        if record is None:
+            return None
+        return deepcopy(_page(record.logs, limit=limit, offset=offset))
 
     def store_result(
         self,
@@ -167,6 +172,7 @@ class InMemoryRunStore:
             record.events = deepcopy(events)
             record.snapshots = deepcopy(snapshots)
             record.accounts = deepcopy(accounts)
+            record.logs = deepcopy(logs or [])
             return deepcopy(record)
 
 

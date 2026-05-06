@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, Stric
 
 RunType = Literal["session", "backtest"]
 RunStatus = Literal["pending", "running", "completed", "failed", "canceled"]
+TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
+ReplayStatus = Literal["replayed", "reconstructed", "unavailable", "mismatch"]
 
 
 class StrictApiModel(BaseModel):
@@ -99,6 +101,52 @@ class RunAccountsResponse(StrictApiModel):
 class RunLogsResponse(StrictApiModel):
     run_id: str
     logs: list[dict[str, Any]]
+
+
+class TimelineEntry(StrictApiModel):
+    step: int | None
+    timestamp: Any | None
+    sequence: int
+    symbol: str | None
+    category: TimelineCategory
+    type: str
+    summary: str
+    payload: dict[str, Any]
+
+
+class RunTimelineResponse(StrictApiModel):
+    run_id: str
+    timeline: list[TimelineEntry]
+
+
+class RunReplayResponse(StrictApiModel):
+    run_id: str
+    status: ReplayStatus
+    message: str
+    total_events: int
+    total_snapshots: int
+    total_accounts: int
+    total_logs: int
+    event_count_matches: bool | None
+    event_hash_matches: bool | None
+
+
+class RunInspectionSummary(StrictApiModel):
+    run_id: str
+    run_type: RunType
+    status: RunStatus
+    symbols: list[str]
+    total_steps: int
+    total_orders: int
+    total_events: int
+    total_trades: int
+    total_snapshots: int
+    total_rejections: int
+    total_volume: int
+    traded_notional: int
+    final_prices: dict[str, Any]
+    final_positions: dict[str, Any]
+    error: str | None
 
 
 class ErrorPayload(StrictApiModel):

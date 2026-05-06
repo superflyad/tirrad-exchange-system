@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from sim.api.models import RunStatus, RunType
-from sim.api.storage.base import RunRecord
+from sim.api.storage.base import RunRecord, TournamentRecord
 
 
 class InMemoryRunStore:
@@ -21,6 +21,8 @@ class InMemoryRunStore:
 
     def __init__(self) -> None:
         self._records: dict[str, RunRecord] = {}
+        self._tournaments: dict[str, TournamentRecord] = {}
+        self._tournament_children: dict[str, list[dict[str, Any]]] = {}
         self._lock = RLock()
 
     def create_run(self, *, run_type: RunType, config: dict[str, Any]) -> RunRecord:
@@ -183,6 +185,81 @@ class InMemoryRunStore:
             if logs is not None:
                 record.logs = deepcopy(logs)
             return deepcopy(record)
+
+    def create_tournament(self, *, tournament_type: str, config: dict[str, Any]) -> TournamentRecord:
+        record = TournamentRecord(
+            tournament_id=uuid4().hex,
+            tournament_type=tournament_type,
+            status="pending",
+            created_at=datetime.now(UTC),
+            config=deepcopy(config),
+        )
+        with self._lock:
+            self._tournaments[record.tournament_id] = record
+            self._tournament_children[record.tournament_id] = []
+        return deepcopy(record)
+
+    def update_tournament(
+        self,
+        tournament_id: str,
+        *,
+        status: RunStatus | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        report: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> TournamentRecord | None:
+        with self._lock:
+            record = self._tournaments.get(tournament_id)
+            if record is None:
+                return None
+            if status is not None:
+                record.status = status
+            if started_at is not None:
+                record.started_at = started_at
+            if completed_at is not None:
+                record.completed_at = completed_at
+            if report is not None:
+                record.report = deepcopy(report)
+            if error is not None:
+                record.error = error
+            return deepcopy(record)
+
+    def get_tournament(self, tournament_id: str) -> TournamentRecord | None:
+        with self._lock:
+            record = self._tournaments.get(tournament_id)
+            return deepcopy(record) if record is not None else None
+
+    def list_tournaments(self) -> list[TournamentRecord]:
+        with self._lock:
+            records = sorted(self._tournaments.values(), key=lambda item: item.created_at)
+            return deepcopy(records)
+
+    def link_tournament_child(
+        self,
+        tournament_id: str,
+        *,
+        child_run_id: str,
+        child_key: str,
+        run_type: RunType,
+        dimensions: dict[str, Any],
+    ) -> None:
+        with self._lock:
+            self._tournament_children.setdefault(tournament_id, []).append(
+                {
+                    "tournament_id": tournament_id,
+                    "child_run_id": child_run_id,
+                    "child_key": child_key,
+                    "run_type": run_type,
+                    "dimensions": deepcopy(dimensions),
+                }
+            )
+
+    def list_tournament_children(self, tournament_id: str) -> list[dict[str, Any]] | None:
+        with self._lock:
+            if tournament_id not in self._tournaments:
+                return None
+            return deepcopy(self._tournament_children.get(tournament_id, []))
 
 
 def _page(items: list[dict[str, Any]], *, limit: int | None, offset: int) -> list[dict[str, Any]]:

@@ -9,6 +9,9 @@ import type {
   SnapshotsResponse,
   TimelineCategory,
   TimelineResponse,
+  TournamentChildrenResponse,
+  TournamentReport,
+  TournamentRun,
   WorkerSummary,
 } from "@/types/api";
 
@@ -98,4 +101,12 @@ export const tesApi = {
     apiFetch<LogsResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/logs`, query)),
   cancelRun: (runId: string) =>
     apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
+  listTournaments: () => apiFetch<TournamentRun[]>("/tournaments"),
+  getTournament: (tournamentId: string) => apiFetch<TournamentRun>(`/tournaments/${encodeURIComponent(tournamentId)}`),
+  getTournamentReport: (tournamentId: string) =>
+    apiFetch<TournamentReport>(`/tournaments/${encodeURIComponent(tournamentId)}/report`),
+  getTournamentChildren: (tournamentId: string) =>
+    apiFetch<TournamentChildrenResponse>(`/tournaments/${encodeURIComponent(tournamentId)}/children`),
+  cancelTournament: (tournamentId: string) =>
+    apiFetch<TournamentRun>(`/tournaments/${encodeURIComponent(tournamentId)}/cancel`, { method: "POST" }),
 };

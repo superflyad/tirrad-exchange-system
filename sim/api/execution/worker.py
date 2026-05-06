@@ -12,6 +12,7 @@ from sim.api.execution.executor import RunExecutor
 from sim.api.execution.queue import SQLiteRunQueue
 from sim.api.services.run_service import RunService
 from sim.api.services.stream_service import StreamService
+from sim.api.services.tournament_service import TournamentService
 from sim.api.storage.sqlite import SQLiteRunStore
 from sim.api.storage import DEFAULT_SQLITE_PATH
 
@@ -36,6 +37,7 @@ class Worker:
         executor: RunExecutor,
         run_service: RunService,
         worker_id: str,
+        tournament_service: TournamentService | None = None,
         poll_interval: float = 1.0,
         max_jobs: int | None = None,
         once: bool = False,
@@ -43,6 +45,7 @@ class Worker:
         self._queue = queue
         self._executor = executor
         self._run_service = run_service
+        self._tournament_service = tournament_service
         self._worker_id = worker_id
         self._poll_interval = poll_interval
         self._max_jobs = max_jobs
@@ -70,6 +73,8 @@ class Worker:
             )
             try:
                 self._executor.execute(item.run_id)
+                if self._tournament_service is not None:
+                    self._tournament_service.aggregate_for_child(item.run_id)
             except Exception as exc:  # Worker boundary must turn all failures into durable state.
                 message = str(exc) or exc.__class__.__name__
                 self._queue.mark_failed(item.run_id, message)
@@ -77,6 +82,8 @@ class Worker:
                     item.run_id,
                     {"level": "error", "message": "worker execution failed", "error": message},
                 )
+                if self._tournament_service is not None:
+                    self._tournament_service.aggregate_for_child(item.run_id)
                 jobs_failed += 1
             else:
                 self._queue.mark_completed(item.run_id)
@@ -103,6 +110,7 @@ def build_worker(*, sqlite_path: str | Path, worker_id: str, poll_interval: floa
         queue=queue,
         executor=RunExecutor(run_service),
         run_service=run_service,
+        tournament_service=TournamentService(store, run_service, queue),
         worker_id=worker_id,
         poll_interval=poll_interval,
         max_jobs=max_jobs,

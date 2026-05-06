@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from sim.api.storage.base import RunRecord, RunStore
+from sim.api.storage.base import RunRecord, RunStore, TournamentRecord
 from sim.api.storage.in_memory import InMemoryRunStore
 from sim.api.storage.sqlite import SQLiteRunStore
 
@@ -32,6 +32,7 @@ __all__ = [
     "DEFAULT_SQLITE_PATH",
     "InMemoryRunStore",
     "RunRecord",
+    "TournamentRecord",
     "RunStore",
     "SQLiteRunStore",
     "create_run_store",

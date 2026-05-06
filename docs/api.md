@@ -327,3 +327,8 @@ Behavior notes and current limitations:
 - The API uses SSE, not WebSockets; clients should reconnect with normal SSE retry behavior if the HTTP connection drops.
 - Existing synchronous run endpoints still return only after execution completes, so clients generally connect after they know the `run_id`; live in-flight consumption is available to callers that have obtained a run id from shared storage or orchestration.
 - Event and snapshot streaming are opt-in to avoid noisy logs and large response bodies for quiet runs.
+
+
+## Strategy tournaments
+
+See [Strategy Tournaments and Parameter Sweeps](tournaments.md) for tournament API examples, report semantics, and dashboard usage.

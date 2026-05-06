@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator
 
 RunType = Literal["session", "backtest"]
+TournamentType = Literal["strategy_vs_strategy", "strategy_vs_scenario", "parameter_sweep", "multi_symbol_sweep"]
 ExecutionMode = Literal["sync", "queued"]
 RunStatus = Literal["pending", "running", "completed", "failed", "canceled"]
 TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
@@ -70,6 +71,116 @@ class BacktestRunRequest(StrictApiModel):
         if not symbols or any(symbol == "" for symbol in symbols):
             raise ValueError("symbols must contain at least one non-empty symbol")
         return symbols
+
+
+class ParameterSweepConfig(StrictApiModel):
+    strategy: StrictStr
+    parameters: dict[StrictStr, list[StrictInt | StrictFloat | StrictStr | StrictBool]] = Field(default_factory=dict)
+
+    @field_validator("strategy")
+    @classmethod
+    def _validate_strategy(cls, value: str) -> str:
+        strategy = value.strip()
+        if strategy == "":
+            raise ValueError("strategy must be a non-empty string")
+        return strategy
+
+    @field_validator("parameters")
+    @classmethod
+    def _validate_parameters(
+        cls, value: dict[str, list[int | float | str | bool]]
+    ) -> dict[str, list[int | float | str | bool]]:
+        for key, values in value.items():
+            if key.strip() == "":
+                raise ValueError("parameter names must be non-empty strings")
+            if not values:
+                raise ValueError("parameter value lists must be non-empty")
+        return value
+
+
+class TournamentConfig(StrictApiModel):
+    mode: ExecutionMode | None = None
+    tournament_type: TournamentType
+    strategies: list[StrictStr] = Field(default_factory=list)
+    scenarios: list[StrictStr] = Field(default_factory=lambda: ["calm_market"])
+    symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
+    seeds: list[StrictInt] = Field(default_factory=lambda: [42])
+    steps: StrictInt = Field(default=25, gt=0)
+    initial_cash: StrictInt = Field(default=1_000_000, ge=0)
+    participant_counts: list[StrictInt] = Field(default_factory=lambda: [20])
+    volatility_ranges: list[StrictFloat] = Field(default_factory=lambda: [0.02])
+    strategy_parameters: dict[StrictStr, list[StrictInt | StrictFloat | StrictStr | StrictBool]] = Field(default_factory=dict)
+    parameter_sweep: ParameterSweepConfig | None = None
+
+    @field_validator("strategies", "scenarios", "symbols")
+    @classmethod
+    def _validate_string_list(cls, value: list[str]) -> list[str]:
+        normalized = [item.strip() for item in value]
+        if any(item == "" for item in normalized):
+            raise ValueError("string lists cannot contain empty values")
+        return normalized
+
+    @field_validator("seeds")
+    @classmethod
+    def _validate_seeds(cls, value: list[int]) -> list[int]:
+        if not value:
+            raise ValueError("seeds must contain at least one seed")
+        return value
+
+    @field_validator("participant_counts")
+    @classmethod
+    def _validate_participants(cls, value: list[int]) -> list[int]:
+        if not value or any(item <= 0 for item in value):
+            raise ValueError("participant_counts must contain positive integers")
+        return value
+
+    @field_validator("volatility_ranges")
+    @classmethod
+    def _validate_volatility(cls, value: list[float]) -> list[float]:
+        if not value or any(item < 0.0 for item in value):
+            raise ValueError("volatility_ranges must contain non-negative floats")
+        return value
+
+
+class TournamentRun(StrictApiModel):
+    tournament_id: str
+    status: RunStatus
+    tournament_type: TournamentType
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    config: dict[str, Any]
+    child_count: StrictInt
+    completed_child_count: StrictInt
+    failed_child_count: StrictInt
+    error: str | None = None
+
+
+class TournamentResult(StrictApiModel):
+    rank: StrictInt
+    child_run_id: str
+    child_key: str
+    status: RunStatus
+    dimensions: dict[str, Any]
+    metrics: dict[str, Any]
+    score: StrictFloat
+    error: str | None = None
+
+
+class TournamentReport(StrictApiModel):
+    tournament_id: str
+    status: RunStatus
+    generated_at: datetime
+    child_count: StrictInt
+    completed_child_count: StrictInt
+    failed_child_count: StrictInt
+    results: list[TournamentResult]
+    failures: list[TournamentResult]
+
+
+class TournamentChildrenResponse(StrictApiModel):
+    tournament_id: str
+    children: list[dict[str, Any]]
 
 
 class RunSummary(StrictApiModel):

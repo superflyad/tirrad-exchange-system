@@ -32,3 +32,8 @@ The live monitor uses `EventSource`, replays recent messages, and reconnects wit
 ## Limitations
 
 The initial dashboard is read-only and intentionally avoids heavy charting/state dependencies. Market data visualization is based on latest-snapshot cards and tables.
+
+
+## Strategy tournaments
+
+See [Strategy Tournaments and Parameter Sweeps](tournaments.md) for tournament API examples, report semantics, and dashboard usage.

@@ -10,6 +10,10 @@ from fastapi.responses import StreamingResponse
 
 from sim.api.models import (
     BacktestRunRequest,
+    ReplayFrame,
+    ReplayRangeResponse,
+    ReplaySessionResponse,
+    ReplaySummaryResponse,
     ReplayVerificationReportModel,
     RunDiffRequest,
     RunDiffResultModel,
@@ -250,6 +254,43 @@ def get_account_timeline(
             offset=offset,
         ),
     )
+
+
+@router.get("/runs/{run_id}/replay", response_model=ReplaySessionResponse)
+def get_replay(run_id: str, request: Request) -> ReplaySessionResponse:
+    return _replay_service(request).get_replay_session(run_id)
+
+
+@router.get("/runs/{run_id}/replay/frame/{step}", response_model=ReplayFrame)
+def get_replay_frame(run_id: str, step: int, request: Request, symbol: str | None = None) -> ReplayFrame:
+    return _replay_service(request).get_replay_frame(run_id, step, symbol=symbol)
+
+
+@router.get("/runs/{run_id}/replay/range", response_model=ReplayRangeResponse)
+def get_replay_range(
+    run_id: str,
+    request: Request,
+    start_step: int = Query(default=0, ge=0),
+    end_step: int = Query(default=100, ge=0),
+    symbol: str | None = None,
+    include_snapshots: bool = True,
+    include_events: bool = True,
+    include_accounts: bool = True,
+) -> ReplayRangeResponse:
+    return _replay_service(request).get_replay_range(
+        run_id,
+        start_step=start_step,
+        end_step=end_step,
+        symbol=symbol,
+        include_snapshots=include_snapshots,
+        include_events=include_events,
+        include_accounts=include_accounts,
+    )
+
+
+@router.get("/runs/{run_id}/replay/summary", response_model=ReplaySummaryResponse)
+def get_replay_summary(run_id: str, request: Request) -> ReplaySummaryResponse:
+    return _replay_service(request).get_replay_summary(run_id)
 
 
 @router.post("/runs/{run_id}/replay", response_model=RunReplayResponse)

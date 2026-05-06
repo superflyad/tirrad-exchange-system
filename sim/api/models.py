@@ -295,6 +295,69 @@ class RunTimelineResponse(StrictApiModel):
     timeline: list[TimelineEntry]
 
 
+
+
+class ReplayFrame(StrictApiModel):
+    step: StrictInt
+    timestamp: Any | None
+    symbols: list[str]
+    symbol: str | None
+    trades: list[dict[str, Any]]
+    snapshots: list[dict[str, Any]]
+    top_of_book: dict[str, Any]
+    account_deltas: list[dict[str, Any]]
+    accounts: list[dict[str, Any]]
+    market_metrics: dict[str, Any]
+    event_summaries: list[dict[str, Any]]
+
+
+class ReplayCursorModel(StrictApiModel):
+    step: StrictInt
+    state: Literal["playing", "paused"]
+    speed: StrictFloat
+
+
+class ReplayTimelineModel(StrictApiModel):
+    start_step: StrictInt
+    end_step: StrictInt
+    steps: list[StrictInt]
+    total_frames: StrictInt
+    event_steps: list[StrictInt]
+    symbols: list[str]
+
+
+class ReplaySessionResponse(StrictApiModel):
+    run_id: str
+    cursor: ReplayCursorModel
+    timeline: ReplayTimelineModel
+    frame: ReplayFrame | None
+
+
+class ReplayRangeResponse(StrictApiModel):
+    run_id: str
+    start_step: StrictInt
+    end_step: StrictInt
+    frames: list[ReplayFrame]
+    next_start_step: StrictInt | None
+    total_frames: StrictInt
+
+
+class ReplaySummaryResponse(StrictApiModel):
+    run_id: str
+    symbols: list[str]
+    total_steps: StrictInt
+    total_frames: StrictInt
+    total_events: StrictInt
+    total_trades: StrictInt
+    total_snapshots: StrictInt
+    total_accounts: StrictInt
+    start_step: StrictInt
+    end_step: StrictInt
+    first_divergence_step: StrictInt | None
+    available_event_types: list[str]
+    performance_notes: list[str]
+
+
 class RunReplayResponse(StrictApiModel):
     run_id: str
     status: ReplayStatus

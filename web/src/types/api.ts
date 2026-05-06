@@ -153,6 +153,41 @@ export interface TimelineEntry {
   payload: JsonObject;
 }
 
+
+export interface ReplayFrame {
+  step: number;
+  timestamp: string | null;
+  symbols: string[];
+  symbol: string | null;
+  trades: JsonObject[];
+  snapshots: JsonObject[];
+  top_of_book: JsonObject;
+  account_deltas: JsonObject[];
+  accounts: JsonObject[];
+  market_metrics: JsonObject;
+  event_summaries: JsonObject[];
+}
+
+export interface ReplayCursor { step: number; state: "playing" | "paused"; speed: number; }
+export interface ReplayTimeline { start_step: number; end_step: number; steps: number[]; total_frames: number; event_steps: number[]; symbols: string[]; }
+export interface ReplaySessionResponse { run_id: string; cursor: ReplayCursor; timeline: ReplayTimeline; frame: ReplayFrame | null; }
+export interface ReplayRangeResponse { run_id: string; start_step: number; end_step: number; frames: ReplayFrame[]; next_start_step: number | null; total_frames: number; }
+export interface ReplaySummaryResponse {
+  run_id: string;
+  symbols: string[];
+  total_steps: number;
+  total_frames: number;
+  total_events: number;
+  total_trades: number;
+  total_snapshots: number;
+  total_accounts: number;
+  start_step: number;
+  end_step: number;
+  first_divergence_step: number | null;
+  available_event_types: string[];
+  performance_notes: string[];
+}
+
 export interface StreamMessage {
   run_id: string;
   timestamp: string;

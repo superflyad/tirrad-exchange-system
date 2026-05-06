@@ -33,7 +33,7 @@ export function RunDetailClient({ run }: { run: RunDetail }) {
           <p>{run.run_type} · <StatusBadge status={run.status} /> · <StatusBadge status={verification.data?.status ?? "unverified"} /> · created {formatDate(run.created_at)}</p>
           {run.error ? <p className="error-text">{run.error}</p> : null}
         </div>
-        <Link href={`/runs/${run.run_id}/live`} className="button primary">Open live monitor</Link>
+        <div className="toolbar grid-toolbar"><Link href={`/runs/${run.run_id}/replay`} className="button primary">Open replay viewer</Link><Link href={`/runs/${run.run_id}/live`} className="button">Open live monitor</Link></div>
       </header>
       <nav className="tabs">{TABS.map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</nav>
       {tab === "Overview" ? <Overview run={run} accounts={accounts.data ?? []} snapshots={snapshots.data ?? []} /> : null}

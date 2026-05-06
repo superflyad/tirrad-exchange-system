@@ -40,6 +40,8 @@ class MarketSessionReport:
     realized_pnl: float
     unrealized_pnl: float
     total_fees: int
+    halt_count: int
+    halted_symbols: tuple[str, ...]
 
 
 @dataclass(frozen=True)

@@ -32,11 +32,18 @@ class MarketSessionRunner:
         imbalance: dict[str, list[float]] = {s: [] for s in self.config.symbols}
         per_symbol_volume = {s: 0 for s in self.config.symbols}
         rejected = 0
+        halt_count = 0
+        halted_symbols: set[str] = set()
         total_orders = 0
         session_cash = 0.0
         session_positions: dict[str, int] = {s: 0 for s in self.config.symbols}
 
         latest_mid: dict[str, float] = {s: 0.0 for s in self.config.symbols}
+        if self.config.scenario in {"volatile_market", "liquidity_shock"}:
+            band_width = max(1, int(round(self.config.initial_price * 0.05)))
+            for symbol in self.config.symbols:
+                engine.set_price_bands(symbol, self.config.initial_price - band_width, self.config.initial_price + band_width)
+
         if scenario.opening_auction_steps > 0:
             for symbol in self.config.symbols:
                 engine.set_trading_phase(symbol, "OpeningAuction")
@@ -47,6 +54,12 @@ class MarketSessionRunner:
                 last_price[symbol] = max(1, last_price[symbol] + delta)
                 spread = max(1, int(round(self.config.spread_width * scenario.spread_multiplier)))
                 step_events = []
+                if self.config.scenario in {"volatile_market", "liquidity_shock"}:
+                    band_width = max(1, int(round(self.config.initial_price * 0.05)))
+                    if last_price[symbol] < self.config.initial_price - band_width or last_price[symbol] > self.config.initial_price + band_width:
+                        status = engine.symbol_status(symbol)
+                        if not bool(status["halted"]):
+                            step_events.extend(parse_events(engine.halt_symbol(symbol, "ScenarioCircuitBreaker")))
                 for p in participants:
                     cmds = p.generate(rng=rng, symbol=symbol, fair_price=last_price[symbol], spread=spread, min_qty=self.config.min_order_size, max_qty=self.config.max_order_size, market_order_prob=min(1.0, max(0.0, self.config.probability_market_order + scenario.market_order_bias)))
                     total_orders += len(cmds)
@@ -86,6 +99,11 @@ class MarketSessionRunner:
                         trades.append({"step": step, "symbol": symbol, "price": event.data.price, "qty": event.data.qty, "maker_order_id": event.data.maker_order_id, "taker_order_id": event.data.taker_order_id})
                     if event.type == "OrderRejected":
                         rejected += 1
+                    if event.type == "SymbolHalted":
+                        halt_count += 1
+                        halted_symbols.add(event.data.symbol)
+                    if event.type == "SymbolResumed":
+                        halted_symbols.discard(event.data.symbol)
                 mid = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
                 latest_mid[symbol] = mid
                 steps.append({"step": step, "symbol": symbol, "events": len(step_events), "trades": step_trade_count, "volume": step_trade_volume, "mid": mid})
@@ -122,6 +140,8 @@ class MarketSessionRunner:
             realized_pnl=realized_pnl,
             unrealized_pnl=unrealized_pnl,
             total_fees=total_fees,
+            halt_count=halt_count,
+            halted_symbols=tuple(sorted(halted_symbols)),
         )
         analytics = {s: {"volume": per_symbol_volume[s], "final_price": last_price[s]} for s in self.config.symbols}
         return MarketSessionResult(self.config, steps, trades, snapshots, report, analytics)

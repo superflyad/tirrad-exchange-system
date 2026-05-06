@@ -52,7 +52,11 @@ namespace {
     if (reason == tes::RejectReason::InsufficientBuyingPower) return "InsufficientBuyingPower";
     if (reason == tes::RejectReason::ShortSellingDisabled) return "ShortSellingDisabled";
     if (reason == tes::RejectReason::MarginRequirementFailed) return "MarginRequirementFailed";
-    return "MaintenanceMarginBreached";
+    if (reason == tes::RejectReason::MaintenanceMarginBreached) return "MaintenanceMarginBreached";
+    if (reason == tes::RejectReason::SymbolHalted) return "SymbolHalted";
+    if (reason == tes::RejectReason::PriceBandViolation) return "PriceBandViolation";
+    if (reason == tes::RejectReason::CircuitBreakerViolation) return "CircuitBreakerViolation";
+    return "AuctionPriceOutOfBand";
 }
 
 [[nodiscard]] tes::Side side_from_string(const std::string& side) {
@@ -229,6 +233,21 @@ namespace {
                 data["symbol"] = evt.symbol;
                 out["data"] = data;
                 return out;
+            } else if constexpr (std::is_same_v<T, tes::SymbolHalted>) {
+                py::dict out; out["type"] = "SymbolHalted"; py::dict data;
+                data["symbol"] = evt.symbol; data["reason"] = evt.reason; out["data"] = data; return out;
+            } else if constexpr (std::is_same_v<T, tes::SymbolResumed>) {
+                py::dict out; out["type"] = "SymbolResumed"; py::dict data;
+                data["symbol"] = evt.symbol; out["data"] = data; return out;
+            } else if constexpr (std::is_same_v<T, tes::PriceBandUpdated>) {
+                py::dict out; out["type"] = "PriceBandUpdated"; py::dict data;
+                data["symbol"] = evt.symbol;
+                data["lower_price"] = evt.lower_price.has_value() ? py::cast(evt.lower_price->ticks) : py::none();
+                data["upper_price"] = evt.upper_price.has_value() ? py::cast(evt.upper_price->ticks) : py::none();
+                out["data"] = data; return out;
+            } else if constexpr (std::is_same_v<T, tes::CircuitBreakerTriggered>) {
+                py::dict out; out["type"] = "CircuitBreakerTriggered"; py::dict data;
+                data["symbol"] = evt.symbol; data["price"] = evt.price.ticks; data["reason"] = evt.reason; out["data"] = data; return out;
             } else if constexpr (std::is_same_v<T, tes::AuctionStarted>) {
                 py::dict out; out["type"] = "AuctionStarted"; py::dict data;
                 data["symbol"] = evt.symbol; data["phase"] = trading_phase_to_string(evt.phase); out["data"] = data; return out;
@@ -423,6 +442,17 @@ namespace {
 
 }  // namespace
 
+[[nodiscard]] py::dict symbol_status_to_py(const tes::SymbolStatus& status) {
+    py::dict out;
+    out["symbol"] = status.symbol;
+    out["phase"] = trading_phase_to_string(status.phase);
+    out["halted"] = status.halted;
+    out["halt_reason"] = status.halt_reason;
+    out["lower_price"] = status.lower_price.has_value() ? py::cast(status.lower_price->ticks) : py::none();
+    out["upper_price"] = status.upper_price.has_value() ? py::cast(status.upper_price->ticks) : py::none();
+    return out;
+}
+
 PYBIND11_MODULE(tes_engine, m) {
     m.doc() = "Python bindings for TES matching engine";
 
@@ -531,6 +561,23 @@ PYBIND11_MODULE(tes_engine, m) {
                  self.set_account_state(account_id, symbol, cash_balance, position_qty);
              },
              py::arg("account_id"), py::arg("symbol"), py::arg("cash_balance"), py::arg("position_qty"))
+        .def("halt_symbol",
+             [](tes::MatchingEngine& self, const std::string& symbol, const std::string& reason) { return events_to_dicts(self.halt_symbol(symbol, reason)); },
+             py::arg("symbol"), py::arg("reason"))
+        .def("resume_symbol",
+             [](tes::MatchingEngine& self, const std::string& symbol) { return events_to_dicts(self.resume_symbol(symbol)); },
+             py::arg("symbol"))
+        .def("symbol_status",
+             [](const tes::MatchingEngine& self, const std::string& symbol) { return symbol_status_to_py(self.symbol_status(symbol)); },
+             py::arg("symbol") = tes::kDefaultSymbol)
+        .def("set_price_bands",
+             [](tes::MatchingEngine& self, const std::string& symbol, std::int64_t lower_price, std::int64_t upper_price) {
+                 return events_to_dicts(self.set_price_bands(symbol, tes::Price{lower_price}, tes::Price{upper_price}));
+             },
+             py::arg("symbol"), py::arg("lower_price"), py::arg("upper_price"))
+        .def("clear_price_bands",
+             [](tes::MatchingEngine& self, const std::string& symbol) { return events_to_dicts(self.clear_price_bands(symbol)); },
+             py::arg("symbol"))
         .def("place_limit_order",
              [](tes::MatchingEngine& self, const std::string& side, std::int64_t price_ticks, std::int64_t qty,
                 const std::string& time_in_force, const std::string& symbol, std::uint64_t account_id) {

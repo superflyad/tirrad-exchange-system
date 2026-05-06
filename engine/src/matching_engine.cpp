@@ -318,6 +318,79 @@ std::optional<AccountId> MatchingEngine::order_owner(OrderId id) const {
 }
 
 
+bool MatchingEngine::is_halted(const Symbol& symbol) const {
+    return trading_phase(symbol) == TradingPhase::Halted;
+}
+
+bool MatchingEngine::price_in_band(const Symbol& symbol, Price price) const {
+    const auto it = price_bands_by_symbol_.find(symbol);
+    if (it == price_bands_by_symbol_.end()) return true;
+    if (it->second.lower_price.has_value() && price.ticks < it->second.lower_price->ticks) return false;
+    if (it->second.upper_price.has_value() && price.ticks > it->second.upper_price->ticks) return false;
+    return true;
+}
+
+std::optional<RejectReason> MatchingEngine::validate_market_control(const Symbol& symbol, Price price) const {
+    if (is_halted(symbol)) return RejectReason::SymbolHalted;
+    if (!price_in_band(symbol, price)) return RejectReason::PriceBandViolation;
+    return std::nullopt;
+}
+
+std::vector<Event> MatchingEngine::halt_symbol(const Symbol& symbol, std::string reason) {
+    trading_phases_by_symbol_[symbol] = TradingPhase::Halted;
+    halt_reasons_by_symbol_[symbol] = reason;
+    std::vector<Event> events{SymbolHalted{symbol, std::move(reason)}};
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::resume_symbol(const Symbol& symbol) {
+    const bool was_halted = is_halted(symbol);
+    trading_phases_by_symbol_[symbol] = TradingPhase::Continuous;
+    halt_reasons_by_symbol_.erase(symbol);
+    std::vector<Event> events;
+    if (was_halted) events.emplace_back(SymbolResumed{symbol});
+    track_events(events);
+    return events;
+}
+
+SymbolStatus MatchingEngine::symbol_status(const Symbol& symbol) const {
+    SymbolStatus status;
+    status.symbol = symbol;
+    status.phase = trading_phase(symbol);
+    status.halted = status.phase == TradingPhase::Halted;
+    if (const auto it = halt_reasons_by_symbol_.find(symbol); it != halt_reasons_by_symbol_.end()) status.halt_reason = it->second;
+    if (const auto it = price_bands_by_symbol_.find(symbol); it != price_bands_by_symbol_.end()) {
+        status.lower_price = it->second.lower_price;
+        status.upper_price = it->second.upper_price;
+    }
+    return status;
+}
+
+std::vector<Event> MatchingEngine::set_price_bands(const Symbol& symbol, Price lower_price, Price upper_price) {
+    if (!is_valid_price(lower_price) || !is_valid_price(upper_price) || lower_price.ticks > upper_price.ticks) {
+        throw std::invalid_argument("price band must be valid and lower <= upper");
+    }
+    price_bands_by_symbol_[symbol] = PriceBand{lower_price, upper_price};
+    std::vector<Event> events{PriceBandUpdated{symbol, lower_price, upper_price}};
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::clear_price_bands(const Symbol& symbol) {
+    price_bands_by_symbol_.erase(symbol);
+    std::vector<Event> events{PriceBandUpdated{symbol, std::nullopt, std::nullopt}};
+    track_events(events);
+    return events;
+}
+
+std::vector<Event> MatchingEngine::trigger_circuit_breaker(const Symbol& symbol, Price price, std::string reason) {
+    std::vector<Event> events{CircuitBreakerTriggered{symbol, price, reason}};
+    std::vector<Event> halt = halt_symbol(symbol, reason);
+    events.insert(events.end(), halt.begin(), halt.end());
+    return events;
+}
+
 TradingPhase MatchingEngine::trading_phase(const Symbol& symbol) const {
     const auto it = trading_phases_by_symbol_.find(symbol);
     return it == trading_phases_by_symbol_.end() ? TradingPhase::Continuous : it->second;
@@ -326,11 +399,15 @@ TradingPhase MatchingEngine::trading_phase(const Symbol& symbol) const {
 std::vector<Event> MatchingEngine::set_trading_phase(const Symbol& symbol, TradingPhase phase) {
     const TradingPhase previous = trading_phase(symbol);
     trading_phases_by_symbol_[symbol] = phase;
+    if (phase != TradingPhase::Halted) halt_reasons_by_symbol_.erase(symbol);
     std::vector<Event> events;
     if (previous == phase) {
         return events;
     }
-    if (phase == TradingPhase::OpeningAuction || phase == TradingPhase::ClosingAuction) {
+    if (phase == TradingPhase::Halted) {
+        halt_reasons_by_symbol_[symbol] = "TradingPhaseHalted";
+        events.emplace_back(SymbolHalted{symbol, "TradingPhaseHalted"});
+    } else if (phase == TradingPhase::OpeningAuction || phase == TradingPhase::ClosingAuction) {
         events.emplace_back(AuctionStarted{symbol, phase});
         const AuctionIndicative indicative = compute_auction_indicative(symbol);
         events.emplace_back(IndicativePriceUpdated{symbol, indicative.price, indicative.qty, indicative.imbalance});
@@ -527,6 +604,13 @@ std::vector<Event> MatchingEngine::uncross(const Symbol& symbol) {
         track_events(events);
         return events;
     }
+    if (!price_in_band(symbol, *indicative.price)) {
+        events.emplace_back(OrderRejected{Side::Bid, *indicative.price, indicative.qty, RejectReason::AuctionPriceOutOfBand, symbol});
+        std::vector<Event> halt = trigger_circuit_breaker(symbol, *indicative.price, "AuctionPriceOutOfBand");
+        events.insert(events.end(), halt.begin(), halt.end());
+        track_events(events);
+        return events;
+    }
     OrderBook& book = book_for(symbol);
     Qty remaining = indicative.qty;
     const std::optional<Price> previous_best_bid = book.best_bid();
@@ -610,6 +694,9 @@ std::vector<Event> MatchingEngine::place_visible_order_with_account_and_id(Accou
     }
     if (visibility == OrderVisibility::Iceberg && (!is_valid_qty(display_qty) || display_qty.value > qty.value)) {
         return {OrderRejected{side, price, qty, RejectReason::InvalidQuantity, symbol}};
+    }
+    if (const auto control_failure = validate_market_control(symbol, price)) {
+        return {OrderRejected{side, price, qty, *control_failure, symbol}};
     }
 
     AccountSnapshot& taker = accounts_[account_id];
@@ -699,6 +786,11 @@ std::vector<Event> MatchingEngine::place_visible_order_with_account_and_id(Accou
             }
         }
         latest_mark_by_symbol_[symbol] = static_cast<double>(fill->price.ticks);
+        if (!price_in_band(symbol, fill->price)) {
+            std::vector<Event> halt_events = trigger_circuit_breaker(symbol, fill->price, "TradePriceBandBreach");
+            events.insert(events.end(), halt_events.begin(), halt_events.end());
+            break;
+        }
 
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "trade_settlement",
             side == Side::Bid ? -notional : notional,
@@ -855,6 +947,9 @@ std::vector<Event> MatchingEngine::place_market_order_with_account_and_id(Accoun
     if (!is_valid_qty(qty)) {
         return {OrderRejected{side, Price{0}, qty, RejectReason::InvalidQuantity, symbol}};
     }
+    if (is_halted(symbol)) {
+        return {OrderRejected{side, Price{0}, qty, RejectReason::SymbolHalted, symbol}};
+    }
     const OrderBook* book = find_book(symbol);
     const bool has_liquidity = book != nullptr && (side == Side::Bid ? book->best_ask().has_value() : book->best_bid().has_value());
     if (!has_liquidity) {
@@ -876,6 +971,9 @@ std::vector<Event> MatchingEngine::place_market_order_with_account_and_id(Accoun
             remaining.value -= std::min(remaining.value, level.qty.value);
             if (remaining.value == 0) break;
         }
+    }
+    if (!price_in_band(symbol, market_limit)) {
+        return {OrderRejected{side, market_limit, qty, RejectReason::PriceBandViolation, symbol}};
     }
     return place_limit_order_with_account_and_id(account_id, symbol, taker_id, side, market_limit, qty, TimeInForce::Ioc);
 }
@@ -934,6 +1032,9 @@ std::vector<Event> MatchingEngine::place_stop_order_with_account_and_id(AccountI
     }
 
     const Price risk_price = limit_price.value_or(stop_price);
+    if (const auto control_failure = validate_market_control(symbol, risk_price)) {
+        return {OrderRejected{side, risk_price, qty, *control_failure, symbol}};
+    }
     if (const auto risk_failure = validate_order_risk(account_id, symbol, side, risk_price, qty)) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "stop_order_rejected_risk_failure", 0, 0, 0, 0, stop_id, std::nullopt});
         return {OrderRejected{side, risk_price, qty, *risk_failure, symbol}};
@@ -961,6 +1062,7 @@ std::optional<Price> MatchingEngine::trigger_price(const Symbol& symbol) const {
 
 std::vector<Event> MatchingEngine::evaluate_stop_orders(const Symbol& symbol) {
     std::vector<Event> out;
+    if (is_halted(symbol)) return out;
     while (true) {
         const std::optional<Price> current = trigger_price(symbol);
         if (!current.has_value()) break;
@@ -1092,6 +1194,9 @@ std::vector<Event> MatchingEngine::replace_order(AccountId account_id, OrderId i
 
     const Side side = ownership_it->second.side;
     const Symbol symbol = ownership_it->second.symbol;
+    if (const auto control_failure = validate_market_control(symbol, new_price)) {
+        return {OrderRejected{side, new_price, new_qty, *control_failure, symbol}};
+    }
     if (const auto risk_failure = validate_order_risk(account_id, symbol, side, new_price, new_qty, id)) {
         append_ledger_entry(AccountLedgerEntry{0, account_id, symbol, "replace_rejected_risk_failure", 0, 0, 0, 0, id, std::nullopt});
         return {OrderRejected{side, new_price, new_qty, *risk_failure, symbol}};

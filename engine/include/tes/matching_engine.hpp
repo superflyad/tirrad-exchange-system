@@ -19,6 +19,9 @@ struct BookLevel {
     Price price{};
     Qty qty{};
 };
+struct PriceBand { std::optional<Price> lower_price; std::optional<Price> upper_price; };
+struct SymbolStatus { Symbol symbol{kDefaultSymbol}; TradingPhase phase{TradingPhase::Continuous}; bool halted{false}; std::string halt_reason; std::optional<Price> lower_price; std::optional<Price> upper_price; };
+
 struct BookSnapshot {
     Symbol symbol{kDefaultSymbol};
     std::vector<BookLevel> bids;
@@ -105,6 +108,12 @@ class MatchingEngine {
     [[nodiscard]] PerformanceSnapshot performance_snapshot(AccountId account_id) const;
     [[nodiscard]] std::optional<AccountId> order_owner(OrderId id) const;
 
+    [[nodiscard]] std::vector<Event> halt_symbol(const Symbol& symbol, std::string reason);
+    [[nodiscard]] std::vector<Event> resume_symbol(const Symbol& symbol);
+    [[nodiscard]] SymbolStatus symbol_status(const Symbol& symbol) const;
+    [[nodiscard]] std::vector<Event> set_price_bands(const Symbol& symbol, Price lower_price, Price upper_price);
+    [[nodiscard]] std::vector<Event> clear_price_bands(const Symbol& symbol);
+
     [[nodiscard]] std::vector<Event> place_limit_order(Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
     [[nodiscard]] std::vector<Event> place_limit_order(AccountId account_id, Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
     [[nodiscard]] std::vector<Event> place_limit_order(AccountId account_id, const Symbol& symbol, Side side, Price price, Qty qty, TimeInForce tif = TimeInForce::Gtc);
@@ -155,6 +164,10 @@ class MatchingEngine {
     [[nodiscard]] std::vector<Event> place_stop_order_with_account_and_id(AccountId account_id, const Symbol& symbol, OrderId stop_id, Side side, Price stop_price, Qty qty, std::optional<Price> limit_price);
     [[nodiscard]] std::vector<Event> evaluate_stop_orders(const Symbol& symbol);
     [[nodiscard]] std::optional<Price> trigger_price(const Symbol& symbol) const;
+    [[nodiscard]] bool is_halted(const Symbol& symbol) const;
+    [[nodiscard]] bool price_in_band(const Symbol& symbol, Price price) const;
+    [[nodiscard]] std::optional<RejectReason> validate_market_control(const Symbol& symbol, Price price) const;
+    [[nodiscard]] std::vector<Event> trigger_circuit_breaker(const Symbol& symbol, Price price, std::string reason);
     void maybe_emit_top_of_book_change(const Symbol& symbol, std::vector<Event>& events, const std::optional<Price>& previous_best_bid, const std::optional<Price>& previous_best_ask);
     [[nodiscard]] OrderBook& book_for(const Symbol& symbol);
     [[nodiscard]] const OrderBook* find_book(const Symbol& symbol) const;
@@ -194,6 +207,8 @@ class MatchingEngine {
     FeeModel fee_model_{};
     std::unordered_map<Symbol, double> latest_mark_by_symbol_;
     std::unordered_map<Symbol, TradingPhase> trading_phases_by_symbol_;
+    std::unordered_map<Symbol, std::string> halt_reasons_by_symbol_;
+    std::unordered_map<Symbol, PriceBand> price_bands_by_symbol_;
 };
 
 }  // namespace tes

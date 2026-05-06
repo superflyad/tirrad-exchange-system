@@ -1087,3 +1087,67 @@ TEST_CASE("multi-symbol hidden and iceberg isolation") {
     REQUIRE(engine.depth("BBB", 1).asks.size() == 1);
     CHECK(engine.depth("BBB", 1).asks[0].qty.value == 2);
 }
+
+TEST_CASE("market controls reject halted symbol orders and preserve other symbols") {
+    tes::MatchingEngine engine;
+    auto halted = engine.halt_symbol("AAA", "news");
+    REQUIRE(halted.size() == 1);
+    CHECK(std::holds_alternative<tes::SymbolHalted>(halted.front()));
+
+    auto rejected = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    REQUIRE(rejected.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(rejected.front()));
+    CHECK(std::get<tes::OrderRejected>(rejected.front()).reason == tes::RejectReason::SymbolHalted);
+
+    auto market_rejected = engine.place_market_order(0, "AAA", tes::Side::Bid, tes::Qty{1});
+    REQUIRE(market_rejected.size() == 1);
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(market_rejected.front()));
+    CHECK(std::get<tes::OrderRejected>(market_rejected.front()).reason == tes::RejectReason::SymbolHalted);
+
+    auto other = engine.place_limit_order(0, "BBB", tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    CHECK(std::holds_alternative<tes::OrderAccepted>(other.front()));
+}
+
+TEST_CASE("halted symbols allow cancel and resume restores trading") {
+    tes::MatchingEngine engine;
+    engine.set_account_state(1, "AAA", 1000, 0);
+    auto accepted = engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{2});
+    REQUIRE(std::holds_alternative<tes::OrderAccepted>(accepted.front()));
+    CHECK(engine.account_snapshot(1).reserved_cash == 200);
+
+    engine.halt_symbol("AAA", "test");
+    auto canceled = engine.cancel(1, 1);
+    CHECK(std::holds_alternative<tes::OrderCanceled>(canceled.front()));
+    CHECK(engine.account_snapshot(1).reserved_cash == 0);
+
+    auto resumed = engine.resume_symbol("AAA");
+    CHECK(std::holds_alternative<tes::SymbolResumed>(resumed.front()));
+    auto after_resume = engine.place_limit_order(1, "AAA", tes::Side::Bid, tes::Price{100}, tes::Qty{1});
+    CHECK(std::holds_alternative<tes::OrderAccepted>(after_resume.front()));
+}
+
+TEST_CASE("price bands reject unsafe limit and market orders") {
+    tes::MatchingEngine engine;
+    engine.set_price_bands("AAA", tes::Price{95}, tes::Price{105});
+    auto limit = engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{106}, tes::Qty{1});
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(limit.front()));
+    CHECK(std::get<tes::OrderRejected>(limit.front()).reason == tes::RejectReason::PriceBandViolation);
+
+    engine.clear_price_bands("AAA");
+    engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{110}, tes::Qty{1});
+    engine.set_price_bands("AAA", tes::Price{95}, tes::Price{105});
+    auto market = engine.place_market_order(0, "AAA", tes::Side::Bid, tes::Qty{1});
+    REQUIRE(std::holds_alternative<tes::OrderRejected>(market.front()));
+    CHECK(std::get<tes::OrderRejected>(market.front()).reason == tes::RejectReason::PriceBandViolation);
+}
+
+TEST_CASE("auction uncross outside price band halts symbol") {
+    tes::MatchingEngine engine;
+    engine.set_trading_phase("AAA", tes::TradingPhase::OpeningAuction);
+    engine.place_limit_order(0, "AAA", tes::Side::Ask, tes::Price{110}, tes::Qty{1});
+    engine.place_limit_order(0, "AAA", tes::Side::Bid, tes::Price{110}, tes::Qty{1});
+    engine.set_price_bands("AAA", tes::Price{95}, tes::Price{105});
+    auto events = engine.uncross("AAA");
+    CHECK(std::holds_alternative<tes::OrderRejected>(events.front()));
+    CHECK(engine.symbol_status("AAA").halted);
+}

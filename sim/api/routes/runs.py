@@ -24,7 +24,6 @@ from sim.api.models import (
     RunSummary,
     RunTimelineResponse,
     SessionRunRequest,
-    WorkerSummary,
 )
 from sim.api.services.replay_service import ReplayService
 from sim.api.services.run_service import RunService
@@ -73,7 +72,7 @@ def run_session(payload: SessionRunRequest, request: Request) -> RunDetail:
         if queue is None:
             return _service(request).run_session(payload)
         detail = _service(request).queue_session(payload)
-        queue.enqueue(detail.run_id)
+        queue.enqueue(detail.run_id, priority=payload.priority)
         return _queued_detail(detail)
     return _service(request).run_session(payload)
 
@@ -85,7 +84,7 @@ def run_backtest(payload: BacktestRunRequest, request: Request) -> RunDetail:
         if queue is None:
             return _service(request).run_backtest(payload)
         detail = _service(request).queue_backtest(payload)
-        queue.enqueue(detail.run_id)
+        queue.enqueue(detail.run_id, priority=payload.priority)
         return _queued_detail(detail)
     return _service(request).run_backtest(payload)
 
@@ -284,14 +283,6 @@ def cancel_run(run_id: str, request: Request) -> RunDetail:
     if queue is not None:
         queue.cancel_pending(run_id)
     return _service(request).cancel_run(run_id)
-
-
-@router.get("/workers", response_model=list[WorkerSummary])
-def list_workers(request: Request) -> list[WorkerSummary]:
-    queue = _queue(request)
-    if queue is None:
-        return []
-    return [WorkerSummary(**worker.__dict__) for worker in queue.list_workers()]
 
 
 @router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)

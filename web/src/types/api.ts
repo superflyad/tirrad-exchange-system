@@ -104,9 +104,38 @@ export interface TournamentChildrenResponse { tournament_id: string; children: J
 
 export interface WorkerSummary {
   worker_id: string;
-  status: string;
+  hostname: string;
+  process_id: number | null;
+  started_at: string | null;
+  heartbeat_at: string | null;
   updated_at: string;
+  capabilities: JsonObject;
+  status: string;
   current_run_id: string | null;
+  progress_summary: JsonObject;
+  cpu_percent: number | null;
+  memory_bytes: number | null;
+  drain_requested: boolean;
+  shutdown_requested: boolean;
+}
+
+export interface SchedulerStatus {
+  pending_count: number;
+  running_count: number;
+  completed_count: number;
+  failed_count: number;
+  stale_worker_count: number;
+  stale_job_count: number;
+  queue_depth: number;
+  average_wait_seconds: number;
+  average_run_seconds: number;
+  worker_utilization: number;
+  throughput_per_minute: number;
+}
+
+export interface RequeueStaleResponse {
+  stale_workers: number;
+  requeued_runs: string[];
 }
 
 export interface RunDetail extends RunSummary {

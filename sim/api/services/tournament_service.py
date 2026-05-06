@@ -39,7 +39,7 @@ class TournamentService:
                 dimensions=spec.dimensions,
             )
             if self._queue is not None:
-                self._queue.enqueue(child.run_id)
+                self._queue.enqueue(child.run_id, priority=request.priority)
         return self.get_tournament(record.tournament_id)
 
     def list_tournaments(self) -> list[TournamentRun]:

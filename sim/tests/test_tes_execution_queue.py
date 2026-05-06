@@ -143,3 +143,117 @@ def test_workers_endpoint_reports_heartbeats(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()[0]["worker_id"] == "worker-a"
+
+
+def test_worker_registration_persists_extended_metadata(tmp_path: Path) -> None:
+    queue = SQLiteRunQueue(tmp_path / "runs.sqlite")
+
+    worker = queue.register_worker(
+        "worker-a",
+        hostname="host-a",
+        process_id=123,
+        capabilities={"run_types": ["session", "benchmark"]},
+    )
+
+    assert worker.worker_id == "worker-a"
+    assert worker.hostname == "host-a"
+    assert worker.process_id == 123
+    assert worker.capabilities == {"run_types": ["session", "benchmark"]}
+    assert queue.get_worker("worker-a") == worker
+
+
+def test_worker_heartbeat_updates_current_job_and_progress(tmp_path: Path) -> None:
+    queue = SQLiteRunQueue(tmp_path / "runs.sqlite")
+    queue.register_worker("worker-a", hostname="host-a")
+
+    queue.heartbeat(
+        "worker-a",
+        status="busy",
+        current_run_id="run-1",
+        progress_summary={"phase": "executing", "step": 2},
+        cpu_percent=12.5,
+        memory_bytes=4096,
+    )
+    worker = queue.get_worker("worker-a")
+
+    assert worker is not None
+    assert worker.status == "busy"
+    assert worker.current_run_id == "run-1"
+    assert worker.progress_summary == {"phase": "executing", "step": 2}
+    assert worker.cpu_percent == 12.5
+    assert worker.memory_bytes == 4096
+
+
+def test_priority_queue_ordering_is_fifo_within_priority(tmp_path: Path) -> None:
+    queue = SQLiteRunQueue(tmp_path / "runs.sqlite")
+    queue.enqueue("low", priority=0)
+    queue.enqueue("high-a", priority=10)
+    queue.enqueue("high-b", priority=10)
+
+    assert queue.claim_next("worker-a").run_id == "high-a"  # type: ignore[union-attr]
+    assert queue.claim_next("worker-b").run_id == "high-b"  # type: ignore[union-attr]
+    assert queue.claim_next("worker-c").run_id == "low"  # type: ignore[union-attr]
+
+
+def test_stale_worker_detection_and_orphan_requeue(tmp_path: Path) -> None:
+    queue = SQLiteRunQueue(tmp_path / "runs.sqlite", stale_after_seconds=1)
+    queue.register_worker("worker-a", hostname="host-a")
+    queue.enqueue("run-1")
+    claimed = queue.claim_next("worker-a")
+    assert claimed is not None
+    old = "2000-01-01T00:00:00+00:00"
+    with queue._connection:  # noqa: SLF001 - test seeds deterministic stale state.
+        queue._connection.execute("UPDATE workers SET heartbeat_at = ? WHERE worker_id = ?", (old, "worker-a"))
+        queue._connection.execute("UPDATE run_queue SET locked_at = ? WHERE run_id = ?", (old, "run-1"))
+        queue._connection.execute("UPDATE run_leases SET expires_at = ?, heartbeat_at = ? WHERE run_id = ?", (old, old, "run-1"))
+
+    stale = queue.detect_stale_workers(stale_after_seconds=1)
+    result = queue.requeue_stale(stale_after_seconds=1)
+
+    assert [worker.worker_id for worker in stale] == ["worker-a"]
+    assert result.requeued_runs == ["run-1"]
+    assert queue.get("run-1").status == "pending"  # type: ignore[union-attr]
+    assert queue.get_lease("run-1") is None
+
+
+def test_tournament_child_runs_distribute_safely_by_priority(tmp_path: Path) -> None:
+    queue = SQLiteRunQueue(tmp_path / "runs.sqlite")
+    for run_id in ["child-1", "child-2", "child-3"]:
+        queue.enqueue(run_id, priority=5)
+
+    claimed = {queue.claim_next(worker_id).run_id for worker_id in ["worker-a", "worker-b", "worker-c"]}  # type: ignore[union-attr]
+
+    assert claimed == {"child-1", "child-2", "child-3"}
+    assert queue.claim_next("worker-d") is None
+
+
+def test_scheduler_endpoints_report_status_and_requeue(tmp_path: Path) -> None:
+    sqlite_path = tmp_path / "runs.sqlite"
+    queue = SQLiteRunQueue(sqlite_path, stale_after_seconds=1)
+    queue.register_worker("worker-a", hostname="host-a", process_id=123, capabilities={"kind": "test"})
+    queue.enqueue("run-1")
+    queue.claim_next("worker-a")
+    old = "2000-01-01T00:00:00+00:00"
+    with queue._connection:  # noqa: SLF001 - test seeds deterministic stale state.
+        queue._connection.execute("UPDATE workers SET heartbeat_at = ? WHERE worker_id = ?", (old, "worker-a"))
+        queue._connection.execute("UPDATE run_queue SET locked_at = ? WHERE run_id = ?", (old, "run-1"))
+    client = TestClient(create_app(store_kind="sqlite", sqlite_path=str(sqlite_path), queue_enabled=True))
+
+    workers = client.get("/workers")
+    worker = client.get("/workers/worker-a")
+    status = client.get("/scheduler/status")
+    requeue = client.post("/scheduler/requeue-stale?stale_after_seconds=1")
+    drain = client.post("/workers/worker-a/drain")
+    shutdown = client.post("/workers/worker-a/shutdown")
+
+    assert workers.status_code == 200
+    assert workers.json()[0]["hostname"] == "host-a"
+    assert worker.status_code == 200
+    assert status.status_code == 200
+    assert status.json()["stale_worker_count"] == 1
+    assert requeue.status_code == 200
+    assert requeue.json()["requeued_runs"] == ["run-1"]
+    assert drain.status_code == 200
+    assert drain.json()["drain_requested"] is True
+    assert shutdown.status_code == 200
+    assert shutdown.json()["shutdown_requested"] is True

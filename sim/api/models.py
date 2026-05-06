@@ -24,6 +24,7 @@ class StrictApiModel(BaseModel):
 
 class SessionRunRequest(StrictApiModel):
     mode: ExecutionMode | None = None
+    priority: StrictInt = 0
     scenario: StrictStr = "calm_market"
     steps: StrictInt = Field(default=25, gt=0)
     symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
@@ -48,6 +49,7 @@ class SessionRunRequest(StrictApiModel):
 
 class BacktestRunRequest(StrictApiModel):
     mode: ExecutionMode | None = None
+    priority: StrictInt = 0
     strategy: StrictStr
     symbols: list[StrictStr] = Field(default_factory=lambda: ["DEFAULT"])
     initial_cash: StrictInt = Field(default=1_000_000, ge=0)
@@ -75,6 +77,7 @@ class BacktestRunRequest(StrictApiModel):
 
 class BenchmarkRunRequest(StrictApiModel):
     mode: ExecutionMode | None = None
+    priority: StrictInt = 10
     threshold_percent: StrictFloat = Field(default=10.0, ge=0.0)
     persist: StrictBool = True
 
@@ -149,6 +152,7 @@ class ParameterSweepConfig(StrictApiModel):
 
 class TournamentConfig(StrictApiModel):
     mode: ExecutionMode | None = None
+    priority: StrictInt = 5
     tournament_type: TournamentType
     strategies: list[StrictStr] = Field(default_factory=list)
     scenarios: list[StrictStr] = Field(default_factory=lambda: ["calm_market"])
@@ -342,9 +346,58 @@ class ErrorResponse(StrictApiModel):
 
 class WorkerSummary(StrictApiModel):
     worker_id: str
-    status: str
+    hostname: str = "unknown"
+    process_id: int | None = None
+    started_at: datetime | None = None
+    heartbeat_at: datetime | None = None
     updated_at: datetime
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    status: str
     current_run_id: str | None
+    progress_summary: dict[str, Any] = Field(default_factory=dict)
+    cpu_percent: float | None = None
+    memory_bytes: int | None = None
+    drain_requested: bool = False
+    shutdown_requested: bool = False
+
+    @classmethod
+    def from_record(cls, record: Any) -> "WorkerSummary":
+        heartbeat_at = getattr(record, "heartbeat_at")
+        return cls(
+            worker_id=getattr(record, "worker_id"),
+            hostname=getattr(record, "hostname", "unknown"),
+            process_id=getattr(record, "process_id", None),
+            started_at=getattr(record, "started_at", None),
+            heartbeat_at=heartbeat_at,
+            updated_at=heartbeat_at,
+            capabilities=getattr(record, "capabilities", {}),
+            status=getattr(record, "status"),
+            current_run_id=getattr(record, "current_run_id", None),
+            progress_summary=getattr(record, "progress_summary", {}),
+            cpu_percent=getattr(record, "cpu_percent", None),
+            memory_bytes=getattr(record, "memory_bytes", None),
+            drain_requested=getattr(record, "drain_requested", False),
+            shutdown_requested=getattr(record, "shutdown_requested", False),
+        )
+
+
+class SchedulerStatusResponse(StrictApiModel):
+    pending_count: StrictInt
+    running_count: StrictInt
+    completed_count: StrictInt
+    failed_count: StrictInt
+    stale_worker_count: StrictInt
+    stale_job_count: StrictInt
+    queue_depth: StrictInt
+    average_wait_seconds: StrictFloat
+    average_run_seconds: StrictFloat
+    worker_utilization: StrictFloat
+    throughput_per_minute: StrictFloat
+
+
+class RequeueStaleResponse(StrictApiModel):
+    stale_workers: StrictInt
+    requeued_runs: list[str]
 
 
 ReplayVerificationStatus = Literal["verified", "mismatch", "partial", "failed"]

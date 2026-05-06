@@ -19,6 +19,8 @@ import type {
   TournamentReport,
   TournamentRun,
   WorkerSummary,
+  SchedulerStatus,
+  RequeueStaleResponse,
 } from "@/types/api";
 
 export interface TimelineQuery {
@@ -103,6 +105,8 @@ export const tesApi = {
     apiFetch<BenchmarkComparison>(appendQuery("/benchmarks/regressions", { threshold_percent })),
   listRuns: () => apiFetch<RunSummary[]>("/runs"),
   listWorkers: () => apiFetch<WorkerSummary[]>("/workers"),
+  getSchedulerStatus: () => apiFetch<SchedulerStatus>("/scheduler/status"),
+  requeueStale: () => apiFetch<RequeueStaleResponse>("/scheduler/requeue-stale", { method: "POST" }),
   getRun: (runId: string) => apiFetch<RunDetail>(`/runs/${encodeURIComponent(runId)}`),
   verifyRun: (runId: string) =>
     apiFetch<ReplayVerificationReport>(`/runs/${encodeURIComponent(runId)}/verify`, { method: "POST" }),

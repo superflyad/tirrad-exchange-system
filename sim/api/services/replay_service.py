@@ -11,6 +11,12 @@ from sim.api.models import (
     ReplayVerificationReportModel,
     RunDiffRequest,
     RunDiffResultModel,
+    ReplayFrame,
+    ReplayRangeResponse,
+    ReplaySessionResponse,
+    ReplaySummaryResponse,
+    ReplayTimelineModel,
+    ReplayCursorModel,
     RunInspectionSummary,
     RunReplayResponse,
     SessionRunRequest,
@@ -19,6 +25,7 @@ from sim.api.models import (
 from sim.api.storage import RunRecord, RunStore
 from sim.api.services.backtest_service import run_backtest
 from sim.api.services.session_service import run_session
+from sim.tes_replay.playback import ReplayPlaybackController, ReplayTimeline
 from sim.tes_replay.verification import ReplayVerifier
 
 TimelineCategory = Literal["command", "event", "snapshot", "account", "log"]
@@ -203,6 +210,99 @@ class ReplayService:
             final_prices=_final_prices(snapshots),
             final_positions=_final_positions(report, accounts),
             error=artifacts.record.error,
+        )
+
+    def get_replay_session(self, run_id: str) -> ReplaySessionResponse:
+        artifacts = self.load_run(run_id)
+        timeline = _replay_timeline(artifacts)
+        controller = ReplayPlaybackController.create(timeline)
+        frame = _build_replay_frame(artifacts, controller.cursor.step, symbol=None) if timeline.steps else None
+        return ReplaySessionResponse(
+            run_id=run_id,
+            cursor=ReplayCursorModel(
+                step=controller.cursor.step,
+                state=controller.cursor.state,
+                speed=controller.cursor.speed,
+            ),
+            timeline=_timeline_model(timeline, artifacts),
+            frame=frame,
+        )
+
+    def get_replay_frame(self, run_id: str, step: int, *, symbol: str | None = None) -> ReplayFrame:
+        artifacts = self.load_run(run_id)
+        timeline = _replay_timeline(artifacts)
+        controller = ReplayPlaybackController.create(timeline).jump_to_step(step)
+        return _build_replay_frame(artifacts, controller.cursor.step, symbol=symbol)
+
+    def get_replay_range(
+        self,
+        run_id: str,
+        *,
+        start_step: int,
+        end_step: int,
+        symbol: str | None = None,
+        include_snapshots: bool = True,
+        include_events: bool = True,
+        include_accounts: bool = True,
+    ) -> ReplayRangeResponse:
+        artifacts = self.load_run(run_id)
+        timeline = _replay_timeline(artifacts)
+        bounded_start = timeline.clamp(start_step)
+        bounded_end = timeline.clamp(end_step)
+        if bounded_end < bounded_start:
+            bounded_start, bounded_end = bounded_end, bounded_start
+        steps = [step for step in timeline.steps if bounded_start <= step <= bounded_end]
+        frames = [
+            frame
+            for step in steps
+            for frame in [
+                _build_replay_frame(
+                    artifacts,
+                    step,
+                    symbol=symbol,
+                    include_snapshots=include_snapshots,
+                    include_events=include_events,
+                    include_accounts=include_accounts,
+                )
+            ]
+            if _frame_has_payload(frame)
+        ]
+        next_step = None
+        for candidate in timeline.steps:
+            if candidate > bounded_end:
+                next_step = candidate
+                break
+        return ReplayRangeResponse(
+            run_id=run_id,
+            start_step=bounded_start,
+            end_step=bounded_end,
+            frames=frames,
+            next_start_step=next_step,
+            total_frames=len(steps),
+        )
+
+    def get_replay_summary(self, run_id: str) -> ReplaySummaryResponse:
+        artifacts = self.load_run(run_id)
+        timeline = _replay_timeline(artifacts)
+        event_types = sorted({_entry_type("event", event) for event in artifacts.events})
+        verification = self._store.get_verification(run_id) or {}
+        return ReplaySummaryResponse(
+            run_id=run_id,
+            symbols=sorted(_symbols_from_artifacts(artifacts)),
+            total_steps=timeline.last_step,
+            total_frames=len(timeline.steps),
+            total_events=len(artifacts.events),
+            total_trades=_count_event_type(artifacts.events, "TradeExecuted"),
+            total_snapshots=len(artifacts.snapshots),
+            total_accounts=len(artifacts.accounts),
+            start_step=timeline.first_step,
+            end_step=timeline.last_step,
+            first_divergence_step=_int_value(verification.get("first_divergence_step")),
+            available_event_types=event_types,
+            performance_notes=[
+                "Use /runs/{run_id}/replay/range with bounded start_step/end_step for large runs.",
+                "Disable snapshots, events, or accounts in range requests when a panel does not need them.",
+            ],
         )
 
     def get_timeline(
@@ -588,3 +688,192 @@ def _artifact_payload(artifacts: _RunArtifacts) -> dict[str, Any]:
         "accounts": artifacts.accounts,
         "logs": artifacts.logs,
     }
+
+
+def _replay_timeline(artifacts: _RunArtifacts) -> ReplayTimeline:
+    steps = {_entry_step(item) for collection in (artifacts.events, artifacts.snapshots, artifacts.accounts, artifacts.logs) for item in collection}
+    present = sorted(step for step in steps if step is not None)
+    if not present:
+        max_step = _report_int(artifacts.report, "total_steps") or 0
+        present = list(range(0, max_step + 1)) if max_step > 0 else [0]
+    return ReplayTimeline(tuple(present))
+
+
+def _timeline_model(timeline: ReplayTimeline, artifacts: _RunArtifacts) -> ReplayTimelineModel:
+    event_steps = sorted({step for event in artifacts.events for step in [_entry_step(event)] if step is not None})
+    return ReplayTimelineModel(
+        start_step=timeline.first_step,
+        end_step=timeline.last_step,
+        steps=list(timeline.steps),
+        total_frames=len(timeline.steps),
+        event_steps=event_steps,
+        symbols=sorted(_symbols_from_artifacts(artifacts)),
+    )
+
+
+def _build_replay_frame(
+    artifacts: _RunArtifacts,
+    step: int,
+    *,
+    symbol: str | None,
+    include_snapshots: bool = True,
+    include_events: bool = True,
+    include_accounts: bool = True,
+) -> ReplayFrame:
+    events = _step_items(artifacts.events, step, symbol=symbol) if include_events else []
+    snapshots = _step_items(artifacts.snapshots, step, symbol=symbol) if include_snapshots else []
+    accounts = _step_items(artifacts.accounts, step, symbol=symbol) if include_accounts else []
+    trades = [_trade_payload(event) for event in events if event.get("type") == "TradeExecuted"]
+    selected_symbols = sorted(_frame_symbols(symbol, events, snapshots, accounts, artifacts))
+    top_of_book = _top_of_book_for_frame(artifacts.snapshots, step, selected_symbols)
+    account_deltas = [_account_delta(account) for account in accounts]
+    market_metrics = _market_metrics(top_of_book, trades)
+    event_summaries = [
+        {
+            "sequence": index,
+            "type": _entry_type("event", event),
+            "summary": _entry_summary("event", _entry_type("event", event), event),
+            "symbol": _entry_symbol("event", event, default_symbol=symbol),
+        }
+        for index, event in enumerate(events)
+    ]
+    timestamp = _first_present([_entry_timestamp(item) for item in [*events, *snapshots, *accounts]])
+    return ReplayFrame(
+        step=step,
+        timestamp=timestamp,
+        symbols=selected_symbols,
+        symbol=symbol if symbol is not None else (selected_symbols[0] if len(selected_symbols) == 1 else None),
+        trades=trades,
+        snapshots=snapshots,
+        top_of_book=top_of_book,
+        account_deltas=account_deltas,
+        accounts=accounts,
+        market_metrics=market_metrics,
+        event_summaries=event_summaries,
+    )
+
+
+def _step_items(items: list[dict[str, Any]], step: int, *, symbol: str | None) -> list[dict[str, Any]]:
+    selected = [item for item in items if _entry_step(item) == step]
+    if symbol is None:
+        return selected
+    return [item for item in selected if _payload_references_symbol(item, symbol) or _entry_symbol("snapshot", item, default_symbol=None) == symbol]
+
+
+def _frame_symbols(
+    symbol: str | None,
+    events: list[dict[str, Any]],
+    snapshots: list[dict[str, Any]],
+    accounts: list[dict[str, Any]],
+    artifacts: _RunArtifacts,
+) -> set[str]:
+    if symbol is not None:
+        return {symbol}
+    symbols: set[str] = set()
+    for event in events:
+        value = _entry_symbol("event", event, default_symbol=None)
+        if value is not None:
+            symbols.add(value)
+    for snapshot in snapshots:
+        symbols.update(_snapshot_symbols(snapshot))
+    for account in accounts:
+        value = _account_symbol(account)
+        if value is not None:
+            symbols.add(value)
+        symbols.update(_dict_keys(account.get("positions")))
+    return symbols or _symbols_from_artifacts(artifacts)
+
+
+def _top_of_book_for_frame(snapshots: list[dict[str, Any]], step: int, symbols: list[str]) -> dict[str, Any]:
+    selected: dict[str, Any] = {}
+    for snapshot in sorted(snapshots, key=lambda item: (_entry_step(item) or 0)):
+        item_step = _entry_step(snapshot)
+        if item_step is None or item_step > step:
+            continue
+        direct_symbol = _string_value(snapshot.get("symbol"))
+        if direct_symbol is not None and direct_symbol in symbols:
+            selected[direct_symbol] = _book_payload(snapshot.get("snapshot", snapshot))
+        payload_symbols = snapshot.get("symbols")
+        if isinstance(payload_symbols, dict):
+            for symbol, value in payload_symbols.items():
+                if isinstance(symbol, str) and symbol in symbols:
+                    selected[symbol] = _book_payload(value)
+    return selected
+
+
+def _book_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    bid = _first_int(value, ("best_bid", "bid", "bid_price"))
+    ask = _first_int(value, ("best_ask", "ask", "ask_price"))
+    bid_qty = _first_int(value, ("best_bid_qty", "bid_qty", "bid_quantity"))
+    ask_qty = _first_int(value, ("best_ask_qty", "ask_qty", "ask_quantity"))
+    spread = ask - bid if ask is not None and bid is not None else None
+    mid = (ask + bid) / 2 if ask is not None and bid is not None else None
+    imbalance = None
+    if bid_qty is not None and ask_qty is not None and bid_qty + ask_qty > 0:
+        imbalance = (bid_qty - ask_qty) / (bid_qty + ask_qty)
+    return {
+        "bid": bid,
+        "ask": ask,
+        "bid_qty": bid_qty,
+        "ask_qty": ask_qty,
+        "spread": spread,
+        "mid": mid,
+        "imbalance": imbalance,
+        "bids": value.get("bids", []),
+        "asks": value.get("asks", []),
+    }
+
+
+def _trade_payload(event: dict[str, Any]) -> dict[str, Any]:
+    data = _event_data(event)
+    return {
+        "trade_id": data.get("trade_id") or data.get("execution_id") or f"{data.get('maker_order_id', 'm')}-{data.get('taker_order_id', 't')}-{data.get('step', '')}",
+        "symbol": data.get("symbol"),
+        "price": data.get("price"),
+        "qty": data.get("qty"),
+        "aggressor_side": data.get("aggressor_side") or data.get("side"),
+        "timestamp": _entry_timestamp(event),
+        "step": _entry_step(event),
+        "event": event,
+    }
+
+
+def _account_delta(account: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "account_id": account.get("account_id"),
+        "step": _entry_step(account),
+        "positions": account.get("positions", {}),
+        "cash": account.get("cash"),
+        "pnl": account.get("pnl") or account.get("realized_pnl") or account.get("unrealized_pnl"),
+        "equity": account.get("equity") or account.get("net_liquidation"),
+        "exposure": account.get("exposure") or account.get("gross_exposure"),
+        "leverage": account.get("leverage"),
+        "payload": account,
+    }
+
+
+def _market_metrics(top_of_book: dict[str, Any], trades: list[dict[str, Any]]) -> dict[str, Any]:
+    volume = sum(_int_value(trade.get("qty")) or 0 for trade in trades)
+    notional = sum((_int_value(trade.get("price")) or 0) * (_int_value(trade.get("qty")) or 0) for trade in trades)
+    return {"trade_count": len(trades), "volume": volume, "notional": notional, "top_of_book": top_of_book}
+
+
+def _first_int(value: dict[str, Any], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        found = _int_value(value.get(key))
+        if found is not None:
+            return found
+    return None
+
+
+def _first_present(values: list[Any | None]) -> Any | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _frame_has_payload(frame: ReplayFrame) -> bool:
+    return bool(frame.trades or frame.snapshots or frame.account_deltas or frame.event_summaries)

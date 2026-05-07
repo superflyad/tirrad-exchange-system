@@ -362,3 +362,56 @@ def test_quiet_stream_mode_does_not_log_every_event_or_snapshot() -> None:
     assert "event" not in categories
     assert "snapshot" not in categories
     assert categories.count("progress") <= 2
+
+
+def test_replay_get_endpoint_returns_timeline_and_frame() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/replay")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"] == run_id
+    assert set(payload["cursor"]) == {"step", "state", "speed"}
+    assert {"step", "trades", "snapshots", "top_of_book", "account_deltas", "market_metrics", "event_summaries"} <= set(payload["frame"])
+
+
+def test_replay_frame_retrieval_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/replay/frame/2?symbol=TES")
+
+    assert response.status_code == 200
+    frame = response.json()
+    assert frame["step"] == 2
+    assert frame["symbol"] == "TES"
+    assert frame["trades"]
+    assert frame["top_of_book"]["TES"]["spread"] == 2
+
+
+def test_replay_range_filtering_works() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(
+        f"/runs/{run_id}/replay/range?start_step=1&end_step=3&symbol=TES&include_snapshots=false&include_accounts=false"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [frame["step"] for frame in payload["frames"]] == [1, 2]
+    assert all(frame["snapshots"] == [] for frame in payload["frames"])
+    assert all(frame["accounts"] == [] for frame in payload["frames"])
+    assert payload["frames"][1]["trades"][0]["symbol"] == "TES"
+
+
+def test_replay_summary_shape_is_stable() -> None:
+    client, run_id = _client_with_inspectable_run()
+
+    response = client.get(f"/runs/{run_id}/replay/summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbols"] == ["ALT", "TES"]
+    assert payload["total_events"] == 3
+    assert payload["total_trades"] == 1
+    assert "TradeExecuted" in payload["available_event_types"]

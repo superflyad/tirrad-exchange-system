@@ -7,6 +7,10 @@ import type {
   HealthResponse,
   LogsResponse,
   ReportResponse,
+  ReplayFrame,
+  ReplayRangeResponse,
+  ReplaySessionResponse,
+  ReplaySummaryResponse,
   ReplayVerificationReport,
   RunDiffRequest,
   RunDiffResult,
@@ -29,6 +33,15 @@ export interface TimelineQuery {
   type?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface ReplayRangeQuery {
+  start_step?: number;
+  end_step?: number;
+  symbol?: string;
+  include_snapshots?: boolean;
+  include_events?: boolean;
+  include_accounts?: boolean;
 }
 
 export interface CollectionQuery {
@@ -59,7 +72,7 @@ function normalizeBaseUrl(value: string): string {
 function appendQuery(path: string, query?: object): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query ?? {}) as [string, unknown][]) {
-    if ((typeof value === "string" || typeof value === "number") && value !== "") params.set(key, String(value));
+    if ((typeof value === "string" || typeof value === "number" || typeof value === "boolean") && value !== "") params.set(key, String(value));
   }
   const serialized = params.toString();
   return serialized ? `${path}?${serialized}` : path;
@@ -118,6 +131,12 @@ export const tesApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     }),
+  getReplay: (runId: string) => apiFetch<ReplaySessionResponse>(`/runs/${encodeURIComponent(runId)}/replay`),
+  getReplayFrame: (runId: string, step: number, symbol?: string) =>
+    apiFetch<ReplayFrame>(appendQuery(`/runs/${encodeURIComponent(runId)}/replay/frame/${step}`, { symbol })),
+  getReplayRange: (runId: string, query?: ReplayRangeQuery) =>
+    apiFetch<ReplayRangeResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/replay/range`, query)),
+  getReplaySummary: (runId: string) => apiFetch<ReplaySummaryResponse>(`/runs/${encodeURIComponent(runId)}/replay/summary`),
   getReport: (runId: string) => apiFetch<ReportResponse>(`/runs/${encodeURIComponent(runId)}/report`),
   getTimeline: (runId: string, query?: TimelineQuery) =>
     apiFetch<TimelineResponse>(appendQuery(`/runs/${encodeURIComponent(runId)}/timeline`, query)),

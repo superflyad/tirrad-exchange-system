@@ -7,7 +7,7 @@ The TES dashboard is a Next.js + TypeScript web interface for operating local Ti
 Start the FastAPI service on port 8000:
 
 ```bash
-./tes api serve --host 127.0.0.1 --port 8000 --store sqlite
+./tes api serve --store sqlite
 ```
 
 Start the dashboard on port 3000:
@@ -22,8 +22,7 @@ Open <http://localhost:3000>. The dashboard proxies `/api/tes/*` requests to `ht
 
 ## Configuration
 
-- `TES_API_URL`: server-side Next.js rewrite target. Defaults to `http://127.0.0.1:8000`.
-- `NEXT_PUBLIC_TES_API_URL`: browser-visible API base. Defaults to `/api/tes`, which uses the local Next.js rewrite and avoids CORS requirements during local development.
+- `NEXT_PUBLIC_TES_API_URL`: single canonical dashboard API setting used by both the frontend API client and Next.js rewrites. Defaults to `/api/tes`, which uses the local Next.js rewrite to forward requests to `http://127.0.0.1:8000` and avoids CORS requirements during local development. See `web/.env.example`.
 
 ## Architecture
 

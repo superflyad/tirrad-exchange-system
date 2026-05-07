@@ -5,7 +5,7 @@ The TES dashboard in `web/` is the first React/Next.js operator interface for pe
 ## Run locally
 
 ```bash
-./tes api serve --host 127.0.0.1 --port 8000 --store sqlite
+./tes api serve --store sqlite
 cd web
 npm install
 npm run dev
@@ -23,7 +23,7 @@ Then open <http://localhost:3000>.
 
 ## API integration
 
-The frontend keeps API access in `web/src/lib/api/client.ts`. By default the browser calls `/api/tes`, and `next.config.ts` rewrites that path to `TES_API_URL` or `http://127.0.0.1:8000`.
+The frontend keeps API access in `web/src/lib/api/client.ts`. By default the browser calls `/api/tes`, and `next.config.ts` uses the same `NEXT_PUBLIC_TES_API_URL` setting to rewrite that path to `http://127.0.0.1:8000`.
 
 ## Streaming
 
@@ -37,3 +37,7 @@ The initial dashboard is read-only and intentionally avoids heavy charting/state
 ## Strategy tournaments
 
 See [Strategy Tournaments and Parameter Sweeps](tournaments.md) for tournament API examples, report semantics, and dashboard usage.
+
+## Full local stack
+
+See [Local Development Workflow](local-development.md) for the end-to-end API, dashboard, persisted demo run, replay inspection, and verification checklist.

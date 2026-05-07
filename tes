@@ -91,6 +91,7 @@ Usage:
   ./${SCRIPT_NAME} presets
   ./${SCRIPT_NAME} sim <command>
   ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH] [--queue]
+  ./${SCRIPT_NAME} api demo-run [--api-url URL] [--steps N] [--symbol SYMBOL] [--seed SEED]
   ./${SCRIPT_NAME} worker run [--worker-id ID] [--poll-interval SECONDS] [--max-jobs N] [--sqlite-path PATH] [--once]
   ./${SCRIPT_NAME} bench [preset] [--json] [--output PATH]
 USAGE

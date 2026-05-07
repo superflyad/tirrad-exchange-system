@@ -63,6 +63,7 @@ export class ApiError extends Error {
   }
 }
 
+// NEXT_PUBLIC_TES_API_URL is the single dashboard API setting; the local default uses the Next.js proxy.
 export const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_TES_API_URL ?? "/api/tes");
 
 function normalizeBaseUrl(value: string): string {

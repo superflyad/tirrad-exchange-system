@@ -1,13 +1,27 @@
+import path from "node:path";
+
 import type { NextConfig } from "next";
 
-const apiTarget = process.env.TES_API_URL ?? "http://127.0.0.1:8000";
+const DEFAULT_API_ORIGIN = "http://127.0.0.1:8000";
+const LOCAL_PROXY_BASE = "/api/tes";
+
+function apiRewriteTarget(): string {
+  const configured = process.env.NEXT_PUBLIC_TES_API_URL?.trim();
+  if (!configured || configured === LOCAL_PROXY_BASE) {
+    return DEFAULT_API_ORIGIN;
+  }
+  return configured.endsWith("/") ? configured.slice(0, -1) : configured;
+}
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
   async rewrites() {
     return [
       {
-        source: "/api/tes/:path*",
-        destination: `${apiTarget}/:path*`,
+        source: `${LOCAL_PROXY_BASE}/:path*`,
+        destination: `${apiRewriteTarget()}/:path*`,
       },
     ];
   },

@@ -43,6 +43,27 @@ data/     local datasets/cache (gitkept, ignored contents)
 - Task 14: API
 - Task 15: dashboard
 
+
+## Full Local Stack Workflow
+
+For the maintained clone-to-dashboard workflow, see [docs/local-development.md](docs/local-development.md). The short version is:
+
+```bash
+# terminal 1: persisted API, defaults to 127.0.0.1:8000
+./tes api serve --store sqlite
+
+# terminal 2: dashboard, defaults to localhost:3000
+cd web
+cp .env.example .env.local
+npm install
+npm run dev
+
+# terminal 3: generate a persisted run without raw curl
+./tes api demo-run
+```
+
+Then open <http://localhost:3000>, confirm <http://localhost:3000/health> reports the API is OK, and inspect the printed `run_id` on the run detail/replay pages.
+
 ## Local Dev Quickstart
 
 > Placeholder quickstart commands (update as the project structure is finalized).

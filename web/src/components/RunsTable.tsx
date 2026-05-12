@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { formatDate, formatNumber, finalEquity, runSteps, runTrades, runVolume, symbolsForRun } from "@/lib/api/metrics";
+import { formatDate, formatNumber, runRejections, runScenario, runSteps, runStrategy, runTrades, symbolsForRun } from "@/lib/api/metrics";
 import type { RunSummary } from "@/types/api";
 import { StatusBadge } from "./StatusBadge";
 
-type SortKey = "created_at" | "status" | "run_type" | "total_trades" | "total_volume" | "steps";
+type SortKey = "created_at" | "status" | "scenario" | "strategy" | "total_trades" | "rejections" | "steps";
 const PAGE_SIZE = 12;
 
-export function RunsTable({ runs }: { runs: RunSummary[] }) {
+export function RunsTable({ runs, onGenerateDemoRun, generatingDemoRun = false }: { runs: RunSummary[]; onGenerateDemoRun?: () => void | Promise<void>; generatingDemoRun?: boolean }) {
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -19,7 +19,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
   const filtered = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     const visible = needle
-      ? runs.filter((run) => [run.run_id, run.run_type, run.status, ...symbolsForRun(run)].join(" ").toLowerCase().includes(needle))
+      ? runs.filter((run) => [run.run_id, runScenario(run) ?? "", runStrategy(run) ?? "", run.status, ...symbolsForRun(run)].join(" ").toLowerCase().includes(needle))
       : runs;
     return [...visible].sort((a, b) => compareRuns(a, b, sortKey) * (sortDirection === "asc" ? 1 : -1));
   }, [filter, runs, sortDirection, sortKey]);
@@ -41,7 +41,7 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
       <div className="toolbar">
         <input
           aria-label="Filter runs"
-          placeholder="Filter by run, status, type, symbol…"
+          placeholder="Filter by run, status, scenario, strategy, symbol…"
           value={filter}
           onChange={(event) => {
             setFilter(event.target.value);
@@ -55,31 +55,29 @@ export function RunsTable({ runs }: { runs: RunSummary[] }) {
           <thead>
             <tr>
               <SortableHeader label="run_id" sortKey="created_at" active={sortKey} direction={sortDirection} onSort={setSort} />
-              <SortableHeader label="type" sortKey="run_type" active={sortKey} direction={sortDirection} onSort={setSort} />
-              <SortableHeader label="status" sortKey="status" active={sortKey} direction={sortDirection} onSort={setSort} />
+              <SortableHeader label="scenario" sortKey="scenario" active={sortKey} direction={sortDirection} onSort={setSort} />
+              <SortableHeader label="strategy" sortKey="strategy" active={sortKey} direction={sortDirection} onSort={setSort} />
               <th>created_at</th>
-              <th>symbols</th>
               <SortableHeader label="steps" sortKey="steps" active={sortKey} direction={sortDirection} onSort={setSort} />
               <SortableHeader label="trades" sortKey="total_trades" active={sortKey} direction={sortDirection} onSort={setSort} />
-              <SortableHeader label="volume" sortKey="total_volume" active={sortKey} direction={sortDirection} onSort={setSort} />
-              <th>PnL/equity</th>
+              <SortableHeader label="rejections" sortKey="rejections" active={sortKey} direction={sortDirection} onSort={setSort} />
+              <SortableHeader label="status" sortKey="status" active={sortKey} direction={sortDirection} onSort={setSort} />
             </tr>
           </thead>
           <tbody>
             {rows.map((run) => (
               <tr key={run.run_id}>
-                <td><Link href={`/runs/${run.run_id}`} className="mono link">{run.run_id}</Link></td>
-                <td>{run.run_type}</td>
-                <td><StatusBadge status={run.status} /></td>
+                <td><Link href={`/runs/${run.run_id}/replay`} className="mono link">{run.run_id}</Link></td>
+                <td>{runScenario(run) ?? "—"}</td>
+                <td>{runStrategy(run) ?? "—"}</td>
                 <td>{formatDate(run.created_at)}</td>
-                <td>{symbolsForRun(run).join(", ") || "—"}</td>
                 <td>{formatNumber(runSteps(run))}</td>
                 <td>{formatNumber(runTrades(run))}</td>
-                <td>{formatNumber(runVolume(run))}</td>
-                <td>{formatNumber(finalEquity(run))}</td>
+                <td>{formatNumber(runRejections(run))}</td>
+                <td><StatusBadge status={run.status} /></td>
               </tr>
             ))}
-            {rows.length === 0 ? <tr><td colSpan={9} className="empty">No runs match this filter.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan={8} className="empty">{runs.length === 0 ? <EmptyRuns onGenerateDemoRun={onGenerateDemoRun} generatingDemoRun={generatingDemoRun} /> : "No runs match this filter."}</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -104,9 +102,20 @@ function compareRuns(a: RunSummary, b: RunSummary, key: SortKey): number {
 
 function sortValue(run: RunSummary, key: SortKey): string | number {
   if (key === "created_at") return new Date(run.created_at).getTime();
-  if (key === "run_type") return run.run_type;
+  if (key === "scenario") return runScenario(run) ?? "";
+  if (key === "strategy") return runStrategy(run) ?? "";
   if (key === "status") return run.status;
   if (key === "steps") return runSteps(run) ?? -1;
   if (key === "total_trades") return runTrades(run) ?? -1;
-  return runVolume(run) ?? -1;
+  if (key === "rejections") return runRejections(run) ?? -1;
+  return "";
+}
+
+function EmptyRuns({ onGenerateDemoRun, generatingDemoRun }: { onGenerateDemoRun?: () => void | Promise<void>; generatingDemoRun: boolean }) {
+  return (
+    <div className="empty-action">
+      <p>No runs yet. Generate demo run.</p>
+      {onGenerateDemoRun ? <button className="button primary" onClick={() => void onGenerateDemoRun()} disabled={generatingDemoRun}>{generatingDemoRun ? "Generating demo run…" : "Generate Demo Run"}</button> : null}
+    </div>
+  );
 }

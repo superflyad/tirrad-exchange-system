@@ -39,6 +39,13 @@ class RunExecutionError(ApiError):
         super().__init__(500, "run_failed", message)
 
 
+class ReplayDataValidationError(ApiError):
+    """Raised when persisted replay artifacts violate the public event contract."""
+
+    def __init__(self, run_id: str, message: str) -> None:
+        super().__init__(422, "replay_validation_error", f"malformed replay data for run {run_id}: {message}")
+
+
 def register_error_handlers(app: FastAPI) -> None:
     """Register stable JSON error responses for API exceptions."""
 

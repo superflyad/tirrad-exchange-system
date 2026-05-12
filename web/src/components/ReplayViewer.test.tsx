@@ -32,6 +32,8 @@ describe("ReplayViewer", () => {
   it("renders playback controls and supports scrubbing", async () => {
     vi.mocked(tesApi.getReplay).mockResolvedValue({
       run_id: "run-1",
+      event_count: 1,
+      events: [{ type: "TradeExecuted", data: { symbol: "TES" } }],
       cursor: { step: 1, state: "paused", speed: 1 },
       timeline: { start_step: 1, end_step: 3, steps: [1, 2, 3], total_frames: 3, event_steps: [2], symbols: ["TES"] },
       frame,
@@ -60,5 +62,30 @@ describe("ReplayViewer", () => {
     expect(screen.getByText("Trade tape")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Next ▶"));
     await waitFor(() => expect(tesApi.getReplayRange).toHaveBeenCalled());
+  });
+
+  it("shows a clean replay error state", async () => {
+    vi.mocked(tesApi.getReplay).mockRejectedValue(new Error("malformed replay data for run run-1"));
+    vi.mocked(tesApi.getReplaySummary).mockResolvedValue({
+      run_id: "run-1",
+      symbols: [],
+      total_steps: 0,
+      total_frames: 0,
+      total_events: 0,
+      total_trades: 0,
+      total_snapshots: 0,
+      total_accounts: 0,
+      start_step: 0,
+      end_step: 0,
+      first_divergence_step: null,
+      available_event_types: [],
+      performance_notes: [],
+    });
+    vi.mocked(tesApi.getReplayRange).mockResolvedValue({ run_id: "run-1", start_step: 0, end_step: 0, frames: [], next_start_step: null, total_frames: 0 });
+    vi.mocked(tesApi.getTimeline).mockResolvedValue({ run_id: "run-1", timeline: [] });
+
+    render(<ReplayViewer runId="run-1" />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("malformed replay data");
   });
 });

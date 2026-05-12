@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from sim.api.errors import RunNotFoundError
+from sim.api.errors import ReplayDataValidationError, RunNotFoundError
 from sim.api.models import (
     BacktestRunRequest,
     ReplayVerificationReportModel,
@@ -214,11 +214,14 @@ class ReplayService:
 
     def get_replay_session(self, run_id: str) -> ReplaySessionResponse:
         artifacts = self.load_run(run_id)
+        _validate_replay_events(run_id, artifacts.events)
         timeline = _replay_timeline(artifacts)
         controller = ReplayPlaybackController.create(timeline)
         frame = _build_replay_frame(artifacts, controller.cursor.step, symbol=None) if timeline.steps else None
         return ReplaySessionResponse(
             run_id=run_id,
+            event_count=len(artifacts.events),
+            events=artifacts.events,
             cursor=ReplayCursorModel(
                 step=controller.cursor.step,
                 state=controller.cursor.state,
@@ -363,6 +366,18 @@ class ReplayService:
         entries = self.get_timeline(run_id, symbol=symbol, category=category, entry_type=entry_type)
         account_entries = [entry for entry in entries if _payload_has_account_id(entry.payload, account_id)]
         return _page(account_entries, limit=limit, offset=offset)
+
+
+def _validate_replay_events(run_id: str, events: list[dict[str, Any]]) -> None:
+    for index, event in enumerate(events):
+        if set(event) != {"type", "data"}:
+            raise ReplayDataValidationError(
+                run_id, f"event at index {index} must contain exactly type and data"
+            )
+        if not isinstance(event.get("type"), str):
+            raise ReplayDataValidationError(run_id, f"event at index {index} has non-string type")
+        if not isinstance(event.get("data"), dict):
+            raise ReplayDataValidationError(run_id, f"event at index {index} has non-object data")
 
 
 def _build_timeline(artifacts: _RunArtifacts) -> list[TimelineEntry]:

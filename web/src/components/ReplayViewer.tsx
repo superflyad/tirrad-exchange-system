@@ -62,7 +62,7 @@ export function ReplayViewer({ runId }: { runId: string }) {
   );
 
   if (session.loading) return <p>Loading replay…</p>;
-  if (session.error) return <p className="error-text">{session.error}</p>;
+  if (session.error) return <section className="panel alert-panel" role="alert"><h2>Replay unavailable</h2><p className="error-text">{session.error}</p></section>;
   if (!timeline) return <p className="empty">Replay timeline is unavailable.</p>;
 
   const topOfBook = frame?.top_of_book ?? {};

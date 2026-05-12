@@ -70,8 +70,22 @@ def test_list_runs_returns_created_runs() -> None:
     response = client.get("/runs")
 
     assert response.status_code == 200
-    run_ids = {item["run_id"] for item in response.json()}
+    runs = response.json()
+    run_ids = {item["run_id"] for item in runs}
     assert {session["run_id"], backtest["run_id"]} <= run_ids
+    session_summary = next(item for item in runs if item["run_id"] == session["run_id"])
+    assert {
+        "run_id",
+        "scenario",
+        "strategy",
+        "created_at",
+        "step_count",
+        "trade_count",
+        "rejection_count",
+        "status",
+    } <= set(session_summary)
+    assert session_summary["scenario"] == "calm_market"
+    assert session_summary["step_count"] == 5
 
 
 def test_get_run_by_id_works() -> None:
@@ -81,8 +95,13 @@ def test_get_run_by_id_works() -> None:
     response = client.get(f"/runs/{created['run_id']}")
 
     assert response.status_code == 200
-    assert response.json()["run_id"] == created["run_id"]
-    assert response.json()["report"]["total_steps"] == 5
+    payload = response.json()
+    assert payload["run_id"] == created["run_id"]
+    assert payload["report"]["total_steps"] == 5
+    assert payload["scenario"] == "calm_market"
+    assert payload["step_count"] == 5
+    assert payload["trade_count"] >= 0
+    assert payload["rejection_count"] >= 0
 
 
 def test_get_report_works() -> None:
@@ -364,7 +383,7 @@ def test_quiet_stream_mode_does_not_log_every_event_or_snapshot() -> None:
     assert categories.count("progress") <= 2
 
 
-def test_replay_get_endpoint_returns_timeline_and_frame() -> None:
+def test_replay_get_endpoint_returns_timeline_frame_and_events() -> None:
     client, run_id = _client_with_inspectable_run()
 
     response = client.get(f"/runs/{run_id}/replay")
@@ -372,8 +391,36 @@ def test_replay_get_endpoint_returns_timeline_and_frame() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["run_id"] == run_id
+    assert payload["event_count"] == 3
+    assert all(set(event) == {"type", "data"} for event in payload["events"])
     assert set(payload["cursor"]) == {"step", "state", "speed"}
     assert {"step", "trades", "snapshots", "top_of_book", "account_deltas", "market_metrics", "event_summaries"} <= set(payload["frame"])
+
+
+def test_replay_get_missing_run_returns_404() -> None:
+    response = _client().get("/runs/missing/replay")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "run_not_found"
+
+
+def test_replay_get_malformed_event_returns_validation_error() -> None:
+    store = InMemoryRunStore()
+    record = store.create_run(run_type="session", config={"scenario": "demo", "symbols": ["TES"]})
+    stored = store.store_result(
+        record.run_id,
+        report={"total_steps": 1},
+        events=[{"type": "TradeExecuted", "data": {}, "debug": "leak"}],
+        snapshots=[],
+        accounts=[],
+    )
+    assert stored is not None
+    client = TestClient(create_app(store))
+
+    response = client.get(f"/runs/{record.run_id}/replay")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "replay_validation_error"
 
 
 def test_replay_frame_retrieval_works() -> None:

@@ -20,12 +20,24 @@ export function symbolsForRun(run: RunSummary): string[] {
   return reportSymbols;
 }
 
+export function runScenario(run: RunSummary): string | null {
+  return run.scenario ?? (typeof run.config.scenario === "string" ? run.config.scenario : null);
+}
+
+export function runStrategy(run: RunSummary): string | null {
+  return run.strategy ?? (typeof run.config.strategy === "string" ? run.config.strategy : null);
+}
+
 export function runSteps(run: RunSummary): number | null {
-  return numberField(run.report_summary, ["total_steps", "steps"]) ?? numberField(run.config, ["steps"]);
+  return run.step_count ?? numberField(run.report_summary, ["total_steps", "steps"]) ?? numberField(run.config, ["steps"]);
 }
 
 export function runTrades(run: RunSummary): number | null {
-  return numberField(run.report_summary, ["total_trades", "trade_count", "trades"]);
+  return run.trade_count ?? numberField(run.report_summary, ["total_trades", "trade_count", "trades"]);
+}
+
+export function runRejections(run: RunSummary): number | null {
+  return run.rejection_count ?? numberField(run.report_summary, ["total_rejections", "rejected_orders", "rejections"]);
 }
 
 export function runVolume(run: RunSummary): number | null {

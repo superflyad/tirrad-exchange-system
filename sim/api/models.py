@@ -246,6 +246,11 @@ class RunSummary(StrictApiModel):
     config: dict[str, Any]
     report_summary: dict[str, Any]
     error: str | None
+    scenario: str | None = None
+    strategy: str | None = None
+    step_count: StrictInt = 0
+    trade_count: StrictInt = 0
+    rejection_count: StrictInt = 0
     polling_url: str | None = None
     stream_url: str | None = None
 
@@ -328,6 +333,8 @@ class ReplayTimelineModel(StrictApiModel):
 
 class ReplaySessionResponse(StrictApiModel):
     run_id: str
+    event_count: StrictInt
+    events: list[dict[str, Any]]
     cursor: ReplayCursorModel
     timeline: ReplayTimelineModel
     frame: ReplayFrame | None

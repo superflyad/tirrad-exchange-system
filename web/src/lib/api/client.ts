@@ -80,10 +80,16 @@ function appendQuery(path: string, query?: object): string {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: { Accept: "application/json", ...init?.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: { Accept: "application/json", ...init?.headers },
+    });
+  } catch (caught) {
+    const details = caught instanceof Error && caught.message ? ` Details: ${caught.message}` : "";
+    throw new Error(`TES API is unreachable. Start it with ./tes api serve and try again.${details}`);
+  }
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
@@ -118,6 +124,22 @@ export const tesApi = {
   getLatestRegressions: (threshold_percent = 10) =>
     apiFetch<BenchmarkComparison>(appendQuery("/benchmarks/regressions", { threshold_percent })),
   listRuns: () => apiFetch<RunSummary[]>("/runs"),
+  generateDemoRun: () => apiFetch<RunDetail>("/sessions/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      scenario: "calm_market",
+      steps: 8,
+      symbols: ["DEFAULT"],
+      seed: 42,
+      initial_price: 100,
+      volatility: 0.02,
+      participants: 6,
+      depth_levels: 3,
+      initial_cash: 1_000_000,
+      mode: "sync",
+    }),
+  }),
   listWorkers: () => apiFetch<WorkerSummary[]>("/workers"),
   getSchedulerStatus: () => apiFetch<SchedulerStatus>("/scheduler/status"),
   requeueStale: () => apiFetch<RequeueStaleResponse>("/scheduler/requeue-stale", { method: "POST" }),

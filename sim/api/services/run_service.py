@@ -297,6 +297,7 @@ class RunService:
         return record
 
     def _to_summary(self, record: RunRecord) -> RunSummary:
+        report_summary = self._report_summary(record.report)
         return RunSummary(
             run_id=record.run_id,
             run_type=record.run_type,
@@ -305,8 +306,17 @@ class RunService:
             started_at=record.started_at,
             completed_at=record.completed_at,
             config=record.config,
-            report_summary=self._report_summary(record.report),
+            report_summary=report_summary,
             error=record.error,
+            scenario=_string_field(record.config, "scenario"),
+            strategy=_string_field(record.config, "strategy"),
+            step_count=_summary_int(report_summary, "total_steps") or _summary_int(record.config, "steps") or 0,
+            trade_count=_summary_int(report_summary, "total_trades") or 0,
+            rejection_count=(
+                _summary_int(report_summary, "total_rejections")
+                or _summary_int(report_summary, "rejected_orders")
+                or 0
+            ),
         )
 
     def _to_detail(self, record: RunRecord) -> RunDetail:
@@ -322,5 +332,16 @@ class RunService:
             "ending_equity",
             "final_equity",
             "rejected_orders",
+            "total_rejections",
         )
         return {key: report[key] for key in summary_keys if key in report}
+
+
+def _string_field(source: dict[str, Any], key: str) -> str | None:
+    value = source.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _summary_int(source: dict[str, Any], key: str) -> int | None:
+    value = source.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None

@@ -60,6 +60,11 @@ export interface RunSummary {
   config: JsonObject;
   report_summary: JsonObject;
   error: string | null;
+  scenario: string | null;
+  strategy: string | null;
+  step_count: number;
+  trade_count: number;
+  rejection_count: number;
   polling_url?: string | null;
   stream_url?: string | null;
 }
@@ -170,7 +175,8 @@ export interface ReplayFrame {
 
 export interface ReplayCursor { step: number; state: "playing" | "paused"; speed: number; }
 export interface ReplayTimeline { start_step: number; end_step: number; steps: number[]; total_frames: number; event_steps: number[]; symbols: string[]; }
-export interface ReplaySessionResponse { run_id: string; cursor: ReplayCursor; timeline: ReplayTimeline; frame: ReplayFrame | null; }
+export interface ReplayEvent { type: string; data: JsonObject; }
+export interface ReplaySessionResponse { run_id: string; event_count: number; events: ReplayEvent[]; cursor: ReplayCursor; timeline: ReplayTimeline; frame: ReplayFrame | null; }
 export interface ReplayRangeResponse { run_id: string; start_step: number; end_step: number; frames: ReplayFrame[]; next_start_step: number | null; total_frames: number; }
 export interface ReplaySummaryResponse {
   run_id: string;

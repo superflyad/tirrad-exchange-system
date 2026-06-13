@@ -63,8 +63,11 @@ export class ApiError extends Error {
   }
 }
 
-// NEXT_PUBLIC_TES_API_URL is the single dashboard API setting; the local default uses the Next.js proxy.
-export const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_TES_API_URL ?? "/api/tes");
+const DEFAULT_API_ORIGIN = "http://127.0.0.1:8000";
+const LOCAL_PROXY_BASE = "/api/tes";
+
+// NEXT_PUBLIC_TES_API_URL is the browser-visible dashboard API setting; the local default uses the Next.js proxy.
+export const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_TES_API_URL ?? LOCAL_PROXY_BASE);
 
 function normalizeBaseUrl(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
@@ -82,7 +85,7 @@ function appendQuery(path: string, query?: object): string {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${runtimeApiBaseUrl()}${path}`, {
       ...init,
       headers: { Accept: "application/json", ...init?.headers },
     });
@@ -97,6 +100,15 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(response.status, message, payload);
   }
   return payload as T;
+}
+
+function runtimeApiBaseUrl(): string {
+  if (typeof window !== "undefined" || !API_BASE_URL.startsWith("/")) {
+    return API_BASE_URL;
+  }
+
+  const apiOrigin = process.env.TES_API_ORIGIN?.trim();
+  return normalizeBaseUrl(apiOrigin && apiOrigin !== "" ? apiOrigin : DEFAULT_API_ORIGIN);
 }
 
 function extractErrorMessage(payload: unknown): string | undefined {

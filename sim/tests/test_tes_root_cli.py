@@ -89,6 +89,14 @@ def test_usage_includes_core_commands() -> None:
     assert "./tes check [preset|python|python-release]" in result.stdout
     assert "./tes clean" in result.stdout
     assert "./tes presets" in result.stdout
+    assert "./tes dev [--demo-run]" in result.stdout
+
+
+def test_dev_help_exits_success() -> None:
+    result = _run_tes("dev", "--help")
+
+    assert result.returncode == 0
+    assert "./tes dev [--demo-run]" in result.stdout
 
 
 def test_sim_demo_exits_success() -> None:

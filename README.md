@@ -49,20 +49,11 @@ data/     local datasets/cache (gitkept, ignored contents)
 For the maintained clone-to-dashboard workflow, see [docs/local-development.md](docs/local-development.md). The short version is:
 
 ```bash
-# terminal 1: persisted API, defaults to 127.0.0.1:8000
-./tes api serve --store sqlite
-
-# terminal 2: dashboard, defaults to localhost:3000
-cd web
-cp .env.example .env.local
-npm install
-npm run dev
-
-# terminal 3: generate a persisted run without raw curl
-./tes api demo-run
+# start the persisted API and dashboard, then generate a demo run
+./tes dev --demo-run
 ```
 
-Then open <http://localhost:3000>, confirm <http://localhost:3000/health> reports the API is OK, and inspect the printed `run_id` on the run detail/replay pages.
+Then open <http://127.0.0.1:3000>, confirm <http://127.0.0.1:3000/health> reports the API is OK, and inspect the printed `run_id` on the run detail/replay pages.
 
 ## Local Dev Quickstart
 

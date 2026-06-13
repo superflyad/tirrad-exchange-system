@@ -5,15 +5,42 @@ This workflow starts the complete local TES operator stack from a fresh clone: t
 ## Defaults
 
 - API: `http://127.0.0.1:8000`
-- Dashboard: `http://localhost:3000`
+- Dashboard: `http://127.0.0.1:3000`
 - Persisted run database: `runs/tes_runs.sqlite`
 - Dashboard API setting: `NEXT_PUBLIC_TES_API_URL=/api/tes`
+- Dashboard rewrite target: `TES_API_ORIGIN=http://127.0.0.1:8000`
 
-`NEXT_PUBLIC_TES_API_URL` is the single canonical dashboard API variable. With the default `/api/tes` value, browser requests stay same-origin with the Next.js dashboard and Next.js rewrites forward them to the local API at `http://127.0.0.1:8000`.
+`NEXT_PUBLIC_TES_API_URL` is the single browser-visible dashboard API variable. With the default `/api/tes` value, browser requests stay same-origin with the Next.js dashboard and Next.js rewrites forward them to `TES_API_ORIGIN`, defaulting to `http://127.0.0.1:8000`.
+
+## Unified local stack
+
+From the repository root:
+
+```bash
+./tes dev
+```
+
+The command starts the persisted API and dashboard as child processes, verifies the API health endpoint and dashboard are reachable, and keeps both running until Ctrl+C. Ctrl+C shuts down both child processes.
+
+To generate a persisted demo run during startup:
+
+```bash
+./tes dev --demo-run
+```
+
+Useful local overrides:
+
+```bash
+./tes dev --api-port 8000
+./tes dev --web-port 3000
+./tes dev --sqlite-path .tes/runs.sqlite
+```
+
+The command checks the requested ports before startup. If the API or dashboard port is occupied or reserved, it scans the next nearby local ports and prints the selected fallback.
 
 ## 1. Start the persisted API
 
-From the repository root:
+Manual equivalent, from the repository root:
 
 ```bash
 ./tes api serve --store sqlite
@@ -82,7 +109,7 @@ A successful local stack has all of the following:
 
 1. API health is online at `http://127.0.0.1:8000/health`.
 2. The API health response is `{"status":"ok","service":"tes-api"}`.
-3. The dashboard loads at `http://localhost:3000` without a Next.js workspace-root warning.
+3. The dashboard loads at `http://127.0.0.1:3000` without a Next.js workspace-root warning.
 4. `./tes api demo-run` prints a non-empty `run_id`.
 5. The persisted run appears in the dashboard run list.
 6. The run detail/replay data pages load for the printed `run_id`.

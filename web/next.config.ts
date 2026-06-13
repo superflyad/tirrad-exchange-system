@@ -6,6 +6,11 @@ const DEFAULT_API_ORIGIN = "http://127.0.0.1:8000";
 const LOCAL_PROXY_BASE = "/api/tes";
 
 function apiRewriteTarget(): string {
+  const localApiOrigin = process.env.TES_API_ORIGIN?.trim();
+  if (localApiOrigin) {
+    return localApiOrigin.endsWith("/") ? localApiOrigin.slice(0, -1) : localApiOrigin;
+  }
+
   const configured = process.env.NEXT_PUBLIC_TES_API_URL?.trim();
   if (!configured || configured === LOCAL_PROXY_BASE) {
     return DEFAULT_API_ORIGIN;

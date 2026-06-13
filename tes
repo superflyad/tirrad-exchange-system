@@ -140,12 +140,242 @@ Usage:
   ./${SCRIPT_NAME} check [preset|python|python-release]
   ./${SCRIPT_NAME} clean
   ./${SCRIPT_NAME} presets
+  ./${SCRIPT_NAME} dev [--demo-run] [--api-port PORT] [--web-port PORT] [--sqlite-path PATH]
   ./${SCRIPT_NAME} sim <command>
   ./${SCRIPT_NAME} api serve [--host HOST] [--port PORT] [--reload] [--store memory|sqlite] [--sqlite-path PATH] [--queue]
   ./${SCRIPT_NAME} api demo-run [--api-url URL] [--steps N] [--symbol SYMBOL] [--seed SEED]
   ./${SCRIPT_NAME} worker run [--worker-id ID] [--poll-interval SECONDS] [--max-jobs N] [--sqlite-path PATH] [--once]
   ./${SCRIPT_NAME} bench [preset] [--json] [--output PATH]
 USAGE
+}
+
+select_available_port() {
+  local host="$1"
+  local port="$2"
+  local label="$3"
+  local scan_limit="${4:-20}"
+  local pybin
+  if ! pybin="$(resolve_python)"; then
+    exit 1
+  fi
+
+  "${pybin}" - "$host" "$port" "$label" "$scan_limit" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+label = sys.argv[3]
+scan_limit = int(sys.argv[4])
+
+def is_available(candidate: int) -> tuple[bool, str]:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, candidate))
+        except OSError as exc:
+            return False, str(exc)
+    return True, ""
+
+available, reason = is_available(port)
+if available:
+    print(port)
+    sys.exit(0)
+
+for candidate in range(port + 1, port + scan_limit + 1):
+    available, _candidate_reason = is_available(candidate)
+    if available:
+        print(
+            f"[TES] {label} port {port} is not available on {host}; using {candidate} instead. Details: {reason}",
+            file=sys.stderr,
+        )
+        print(candidate)
+        sys.exit(0)
+
+print(
+    f"[TES] No available {label} port found from {port} through {port + scan_limit} on {host}. "
+    f"First failure: {reason}",
+    file=sys.stderr,
+)
+sys.exit(1)
+PY
+}
+
+wait_for_url() {
+  local url="$1"
+  local label="$2"
+  local timeout_seconds="$3"
+  local pybin
+  if ! pybin="$(resolve_python)"; then
+    exit 1
+  fi
+
+  "${pybin}" - "$url" "$label" "$timeout_seconds" <<'PY'
+import sys
+import time
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+url = sys.argv[1]
+label = sys.argv[2]
+deadline = time.monotonic() + float(sys.argv[3])
+last_error = ""
+
+while time.monotonic() < deadline:
+    try:
+        request = Request(url, headers={"Accept": "application/json,text/html,*/*"})
+        with urlopen(request, timeout=2) as response:
+            if 200 <= response.status < 500:
+                print(f"[TES] {label} reachable: {url}")
+                sys.exit(0)
+    except HTTPError as exc:
+        if 200 <= exc.code < 500:
+            print(f"[TES] {label} reachable: {url}")
+            sys.exit(0)
+        last_error = f"HTTP {exc.code}"
+    except URLError as exc:
+        last_error = str(exc.reason)
+    except TimeoutError:
+        last_error = "timeout"
+    time.sleep(1)
+
+print(f"[TES] {label} did not become reachable at {url}: {last_error}", file=sys.stderr)
+sys.exit(1)
+PY
+}
+
+terminate_process_tree() {
+  local pid="$1"
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+
+  if is_windows_shell && command -v taskkill >/dev/null 2>&1; then
+    taskkill //PID "${pid}" //T //F >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  kill "${pid}" 2>/dev/null || true
+}
+
+run_dev() {
+  local api_host="127.0.0.1"
+  local api_port="8000"
+  local web_host="127.0.0.1"
+  local web_port="3000"
+  local sqlite_path="runs/tes_runs.sqlite"
+  local demo_run=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --demo-run)
+        demo_run=1
+        shift
+        ;;
+      --api-port)
+        if [[ $# -lt 2 ]]; then
+          echo "--api-port requires a port" >&2
+          exit 1
+        fi
+        api_port="$2"
+        shift 2
+        ;;
+      --web-port)
+        if [[ $# -lt 2 ]]; then
+          echo "--web-port requires a port" >&2
+          exit 1
+        fi
+        web_port="$2"
+        shift 2
+        ;;
+      --sqlite-path)
+        if [[ $# -lt 2 ]]; then
+          echo "--sqlite-path requires a path" >&2
+          exit 1
+        fi
+        sqlite_path="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      --*)
+        echo "Unknown dev option: $1" >&2
+        exit 1
+        ;;
+      *)
+        echo "Unexpected dev argument: $1" >&2
+        exit 1
+        ;;
+    esac
+  done
+
+  api_port="$(select_available_port "${api_host}" "${api_port}" "API")"
+  web_port="$(select_available_port "${web_host}" "${web_port}" "dashboard")"
+
+  local script_path
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/${SCRIPT_NAME}"
+  local api_url="http://${api_host}:${api_port}"
+  local web_url="http://${web_host}:${web_port}"
+  local api_pid=""
+  local web_pid=""
+
+  cleanup_dev() {
+    trap - INT TERM EXIT
+    echo "[TES] Shutting down local development processes..."
+    if [[ -n "${web_pid}" ]]; then
+      terminate_process_tree "${web_pid}"
+    fi
+    if [[ -n "${api_pid}" ]]; then
+      terminate_process_tree "${api_pid}"
+    fi
+    if [[ -n "${web_pid}" ]]; then
+      wait "${web_pid}" 2>/dev/null || true
+    fi
+    if [[ -n "${api_pid}" ]]; then
+      wait "${api_pid}" 2>/dev/null || true
+    fi
+  }
+
+  trap cleanup_dev INT TERM EXIT
+
+  echo "[TES] Starting API at ${api_url} with SQLite store ${sqlite_path}"
+  "${script_path}" api serve --host "${api_host}" --port "${api_port}" --store sqlite --sqlite-path "${sqlite_path}" &
+  api_pid="$!"
+
+  echo "[TES] Starting dashboard at ${web_url}"
+  (
+    cd web
+    MSYS_NO_PATHCONV=1 NEXT_PUBLIC_TES_API_URL="/api/tes" TES_API_ORIGIN="${api_url}" \
+      npm run dev -- --hostname "${web_host}" --port "${web_port}"
+  ) &
+  web_pid="$!"
+
+  wait_for_url "${api_url}/health" "API health endpoint" 60 || exit 1
+  wait_for_url "${web_url}" "dashboard" 90 || exit 1
+
+  if [[ "${demo_run}" -eq 1 ]]; then
+    echo "[TES] Creating persisted demo run through ${api_url}"
+    "${script_path}" api demo-run --api-url "${api_url}" || exit 1
+  fi
+
+  echo "[TES] Local development stack is ready."
+  echo "[TES] API: ${api_url}"
+  echo "[TES] Dashboard: ${web_url}"
+  echo "[TES] Press Ctrl+C to stop both processes."
+
+  while true; do
+    if ! kill -0 "${api_pid}" 2>/dev/null; then
+      wait "${api_pid}"
+      exit "$?"
+    fi
+    if ! kill -0 "${web_pid}" 2>/dev/null; then
+      wait "${web_pid}"
+      exit "$?"
+    fi
+    sleep 1
+  done
 }
 
 run_bench() {
@@ -293,6 +523,10 @@ main() {
     presets)
       echo "[TES] List CMake presets"
       cmake --list-presets
+      ;;
+    dev)
+      shift
+      run_dev "$@"
       ;;
     sim)
       run_sim_cli "$@"

@@ -78,6 +78,10 @@ def _run_tes(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _bash_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def test_usage_includes_core_commands() -> None:
     result = _run_tes("help")
 
@@ -91,3 +95,36 @@ def test_sim_demo_exits_success() -> None:
     result = _run_tes("sim", "demo")
 
     assert result.returncode == 0
+
+
+def test_resolve_python_skips_windows_store_python3_alias(tmp_path: Path) -> None:
+    if not IS_WINDOWS:
+        pytest.skip("Windows Store aliases are Windows-specific")
+
+    bash = _find_git_bash()
+    windows_apps = tmp_path / "Microsoft" / "WindowsApps"
+    windows_apps.mkdir(parents=True)
+    fake_alias = windows_apps / "python3"
+    fake_alias.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    fake_alias.chmod(0o755)
+
+    path_entries = [
+        _to_git_bash_path(windows_apps),
+        _to_git_bash_path(Path(sys.executable).parent),
+    ]
+    command = (
+        f"source {_bash_quote(_to_git_bash_path(TES_SCRIPT))}; "
+        f"PATH={_bash_quote(':'.join(path_entries))}; "
+        "resolve_python"
+    )
+    result = subprocess.run(
+        [bash, "-lc", command],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Microsoft/WindowsApps" not in result.stdout.replace("\\", "/")
+    assert "python" in Path(result.stdout.strip()).name.lower()

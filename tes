@@ -34,6 +34,59 @@ python_ext_dir() {
   fi
 }
 
+is_windows_store_python_alias() {
+  local candidate="$1"
+  case "${candidate}" in
+    */Microsoft/WindowsApps/python|*/Microsoft/WindowsApps/python.exe|\
+    */Microsoft/WindowsApps/python3|*/Microsoft/WindowsApps/python3.exe|\
+    *\\Microsoft\\WindowsApps\\python|*\\Microsoft\\WindowsApps\\python.exe|\
+    *\\Microsoft\\WindowsApps\\python3|*\\Microsoft\\WindowsApps\\python3.exe)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+probe_python_executable() {
+  local candidate="$1"
+  if [[ -z "${candidate}" ]] || is_windows_store_python_alias "${candidate}"; then
+    return 1
+  fi
+
+  "${candidate}" -c 'import sys' 2>/dev/null || return 1
+  printf '%s\n' "${candidate}"
+}
+
+probe_py_launcher() {
+  if ! is_windows_shell || ! command -v py >/dev/null 2>&1; then
+    return 1
+  fi
+
+  py -3 -c 'import sys; print(sys.executable)' 2>/dev/null
+}
+
+resolve_python() {
+  local candidate
+
+  if [[ -n "${TES_PYTHON:-}" ]]; then
+    probe_python_executable "${TES_PYTHON}" && return 0
+  fi
+
+  for candidate in \
+    "$(command -v python3 || true)" \
+    "$(command -v python || true)"
+  do
+    probe_python_executable "${candidate}" && return 0
+  done
+
+  probe_py_launcher && return 0
+
+  echo "real python3/python interpreter not found in PATH" >&2
+  return 1
+}
+
 run_core_check() {
   local preset="${1:-$(default_preset)}"
   echo "[TES] Configure preset: ${preset}"
@@ -48,16 +101,14 @@ run_python_check() {
   local preset="$1"
   local build_config="${2:-}"
   local pybin
-  pybin="$(command -v python3 || command -v python)"
-  if [[ -z "${pybin}" ]]; then
-    echo "python3/python not found in PATH" >&2
+  if ! pybin="$(resolve_python)"; then
     exit 1
   fi
 
   local cmake_args=(--preset "${preset}" -DPython3_EXECUTABLE="${pybin}")
   if is_windows_shell; then
     local pybind11_dir
-    pybind11_dir="$(${pybin} -m pybind11 --cmakedir)"
+    pybind11_dir="$("${pybin}" -m pybind11 --cmakedir)"
     cmake_args+=(-Dpybind11_DIR="${pybind11_dir}")
   fi
 
@@ -171,9 +222,7 @@ run_python_module() {
   local module="$1"
   shift
   local pybin
-  pybin="$(command -v python3 || command -v python)"
-  if [[ -z "${pybin}" ]]; then
-    echo "python3/python not found in PATH" >&2
+  if ! pybin="$(resolve_python)"; then
     exit 1
   fi
 
@@ -212,59 +261,65 @@ run_worker_cli() {
   run_python_module sim.api.execution.worker "$@"
 }
 
-cmd="${1:-}"
-arg="${2:-}"
+main() {
+  local cmd="${1:-}"
+  local arg="${2:-}"
 
-case "$cmd" in
-  check)
-    case "$arg" in
-      "")
-        run_core_check
-        ;;
-      python)
-        run_python_check "$(python_preset)" "$(is_windows_shell && echo Release || true)"
-        ;;
-      python-release)
-        if is_windows_shell; then
-          run_python_check "release-msvc-python" "Release"
-        else
-          run_python_check "debug-ninja-python"
-        fi
-        ;;
-      *)
-        run_core_check "$arg"
-        ;;
-    esac
-    ;;
-  clean)
-    echo "[TES] Remove build output: out/build"
-    rm -rf out/build
-    ;;
-  presets)
-    echo "[TES] List CMake presets"
-    cmake --list-presets
-    ;;
-  sim)
-    run_sim_cli "$@"
-    ;;
-  api)
-    shift
-    run_api_cli "$@"
-    ;;
-  worker)
-    shift
-    run_worker_cli "$@"
-    ;;
-  bench)
-    shift
-    run_bench "$@"
-    ;;
-  ""|-h|--help|help)
-    usage
-    ;;
-  *)
-    echo "Unknown command: ${cmd}" >&2
-    usage >&2
-    exit 1
-    ;;
-esac
+  case "$cmd" in
+    check)
+      case "$arg" in
+        "")
+          run_core_check
+          ;;
+        python)
+          run_python_check "$(python_preset)" "$(is_windows_shell && echo Release || true)"
+          ;;
+        python-release)
+          if is_windows_shell; then
+            run_python_check "release-msvc-python" "Release"
+          else
+            run_python_check "debug-ninja-python"
+          fi
+          ;;
+        *)
+          run_core_check "$arg"
+          ;;
+      esac
+      ;;
+    clean)
+      echo "[TES] Remove build output: out/build"
+      rm -rf out/build
+      ;;
+    presets)
+      echo "[TES] List CMake presets"
+      cmake --list-presets
+      ;;
+    sim)
+      run_sim_cli "$@"
+      ;;
+    api)
+      shift
+      run_api_cli "$@"
+      ;;
+    worker)
+      shift
+      run_worker_cli "$@"
+      ;;
+    bench)
+      shift
+      run_bench "$@"
+      ;;
+    ""|-h|--help|help)
+      usage
+      ;;
+    *)
+      echo "Unknown command: ${cmd}" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

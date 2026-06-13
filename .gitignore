@@ -221,6 +221,7 @@ data/*
 engine/build/
 
 # TES dashboard frontend artifacts
+web/.env.local
 web/.next/
 web/node_modules/
 web/tsconfig.tsbuildinfo

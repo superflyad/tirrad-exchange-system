@@ -4,6 +4,17 @@ Level 3 Objective-Driven Planning updates this file after every completed task. 
 
 ## 2026-06-14
 
+### Upgrade workflow to include Project Operations and Capacity Tracking
+
+- Objective: Workflow governance / One-command local onboarding support.
+- Milestone: Project operations framework.
+- Lane: Dev Workflow / Tests/Documentation
+- Success scenario result: `OPERATIONS.md` defines objectives, milestones, tasks, throughput, capacity, blockers, usage observations, operations records, objective progress tracking, prioritization, reporting, efficiency guidance, objective cost awareness, a Tirrad-specific onboarding example, and future readiness notes for Level 4 and Level 5.
+- Files changed: `OPERATIONS.md`, `CODEX_WORKFLOW.md`, `CODEX_TASK_TEMPLATE.md`, `CODEX_VALIDATION.md`, `OBJECTIVES.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `CODEX_STATE.md`
+- Validation run: `git status`, `git diff --stat`, and `git diff --check`.
+- State updates: Added operations awareness to Level 3 planning, completion reporting, validation rules, objective tracking, state snapshot, and next-task recommendations.
+- Recommended follow-up: Outcome-validate `./tes dev --demo-run` because operations tracking shows the current bottleneck is missing local outcome evidence, not more planning documentation.
+
 ### Upgrade workflow to Objective-Driven Planning
 
 - Objective: One-command local onboarding / workflow governance.

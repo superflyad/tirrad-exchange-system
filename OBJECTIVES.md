@@ -12,6 +12,10 @@ Each objective must contain:
 - Milestones
 - Current Status
 - Progress %
+- Completed Milestones
+- Remaining Milestones
+- Current Bottleneck
+- Estimated Next Highest-Value Work
 - Known Risks
 - Dependencies
 
@@ -22,6 +26,8 @@ Objective status values:
 - Complete
 
 Progress should be evidence-based and milestone-weighted unless an objective defines a more precise metric.
+
+Each objective may include an `Operations Tracking` block with throughput, capacity, blocker, and usage observations. Do not invent usage values. Use `Usage unavailable` when usage is not available.
 
 ## Milestone Model
 
@@ -47,6 +53,17 @@ Each milestone must contain:
 - Description: A fresh local checkout should be able to start TES, create a demo run, show a healthy dashboard, and expose replay data through one repository workflow command without manual fixes.
 - Current Status: Active
 - Progress %: 35
+- Completed Milestones:
+  - Root `./tes` workflow entry point exists.
+  - API demo-run helper exists.
+  - Dashboard run, live monitor, and replay surfaces are present.
+- Remaining Milestones:
+  - Python verification
+  - Current unified local startup outcome evidence
+  - Dashboard run and replay visibility evidence
+  - Automated smoke validation
+- Current Bottleneck: Current recorded local outcome evidence for `./tes dev --demo-run` is unavailable.
+- Estimated Next Highest-Value Work: Outcome-validate `./tes dev --demo-run` and record dashboard health, generated `run_id`, run detail, replay visibility, and clean shutdown evidence.
 - Dependencies:
   - Root `./tes` workflow entry point
   - Local Python/API environment
@@ -132,6 +149,24 @@ Fresh clone
   - Smoke validation is reachable through `./tes`.
   - Documentation explains how to run the smoke path after functionality is proven.
 
+#### Operations Tracking
+
+- Progress %: 35
+- Completed milestones:
+  - Root `./tes` workflow entry point exists.
+  - API demo-run helper exists.
+  - Dashboard run, live monitor, and replay surfaces are present.
+- Remaining milestones:
+  - Python verification
+  - Unified local startup outcome evidence
+  - Outcome validation through dashboard run detail and replay visibility
+  - Automated smoke validation
+- Current bottleneck: Current local outcome evidence for `./tes dev --demo-run` is unavailable.
+- Estimated next highest-value work: Outcome-validate `./tes dev --demo-run` and capture dashboard health, generated `run_id`, run detail, replay visibility, and clean shutdown.
+- Throughput notes: Level 3 planning and operations framework work is complete enough; the next highest-value work should produce validation evidence.
+- Capacity notes: Local validation capacity depends on API/dashboard startup and port availability.
+- Usage observations: Usage unavailable.
+
 ## Candidate Task Ranking Rules
 
 When deriving work from this file, Codex should rank candidate tasks by project impact:
@@ -139,10 +174,11 @@ When deriving work from this file, Codex should rank candidate tasks by project 
 1. Unblockers
 2. Infrastructure required by multiple milestones
 3. User-visible functionality
-4. Automation
-5. Documentation
+4. Validation
+5. Automation
+6. Documentation
 
-Avoid duplicate tasks, completed work, low-value busywork, and documentation before functionality unless the active objective is itself workflow governance.
+Avoid duplicate tasks, completed work, low-value busywork, workflow churn, documentation-only loops, and documentation before functionality unless the active objective is itself workflow governance.
 
 ## Recommended First Objective
 

@@ -10,6 +10,7 @@ No active tasks.
 
 - 2026-06-14: Level 3 operating-loop validation found no active in-progress task. The previous recommendation to implement `./tes dev --demo-run` is stale because the command is already present; next work should validate the existing workflow outcome.
 - 2026-06-14: Workflow planning upgraded to objective-driven state management. Future task intake must read `OBJECTIVES.md` before `NEXT_TASK.md`.
+- 2026-06-14: Project Operations and Capacity Tracking framework added. No active task remains after the docs-only workflow update.
 
 ## Entry Format
 

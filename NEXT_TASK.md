@@ -1,6 +1,12 @@
 # Next Task
 
-`NEXT_TASK.md` is the short-form recommendation output for Level 3 Objective-Driven Planning. It must be derived from `OBJECTIVES.md`, not used as the sole planning source.
+`NEXT_TASK.md` is the short-form recommendation output for Level 3 Objective-Driven Planning with Project Operations and Capacity Tracking. It must be derived from `OBJECTIVES.md` and `OPERATIONS.md`, not used as the sole planning source.
+
+## Highest-Value Next Task
+
+Outcome-validate `./tes dev --demo-run`.
+
+Operations rationale: Recent workflow work has improved planning quality, but the One-command local onboarding objective is still bottlenecked on current local outcome evidence. The highest-value next task is validation evidence, not more workflow churn or documentation-only work.
 
 ## Recommended Level 3 Objective-Driven Task Batch
 
@@ -18,6 +24,7 @@ These tasks are ordered by impact and independence. Pick one unless the user exp
 - Suggested file ownership: no product-code ownership for validation-only mode; if a defect is found, scope a follow-up fix to the smallest affected files.
 - Avoid touching: engine matching behavior, Python-visible event contracts, dashboard behavior, and strict command/event models unless a defect requires an explicitly scoped follow-up.
 - Validation target: run the existing command-level tests that cover the root `tes` launcher if selected, then run `./tes dev --demo-run` and capture the generated `run_id`, dashboard health, run detail, and replay availability.
+- Operations rationale: Removes the current bottleneck by producing evidence for the active objective's user-visible path.
 
 Success Scenario:
 1. `./tes dev --demo-run` starts the persisted API and dashboard.
@@ -39,6 +46,7 @@ Success Scenario:
 - Suggested file ownership: investigation report only unless implementation is explicitly approved.
 - Avoid touching: product code during investigation-only mode.
 - Validation target: browser or API evidence that the run and replay surfaces load for the generated run.
+- Operations rationale: Converts startup evidence into user-visible objective progress and identifies any dashboard/UI blocker.
 
 Success Scenario:
 1. Use the demo-run `run_id`.
@@ -60,6 +68,7 @@ Success Scenario:
 - Suggested file ownership: task plan or test files only after explicit implementation approval.
 - Avoid touching: matching behavior and command/event contracts.
 - Validation target: proposed smoke validation command and success scenario, or implemented smoke test if separately approved.
+- Operations rationale: Useful after manual evidence exists; avoid automating assumptions before the workflow is proven.
 
 Success Scenario:
 1. Read objective evidence from the completed onboarding validation.

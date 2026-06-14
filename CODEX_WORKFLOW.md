@@ -38,12 +38,12 @@ At Level 2, a task is complete only when:
 
 Status: active for future Codex tasks.
 
-Level 3 keeps Level 2 outcome validation and the project operating loop, then adds objective-driven planning. Codex must reason from project objectives before selecting isolated tasks. `NEXT_TASK.md` is no longer the planning source of truth; it is the short-form recommendation derived from `OBJECTIVES.md`.
+Level 3 keeps Level 2 outcome validation and the project operating loop, then adds objective-driven planning, Project Operations, and Capacity Tracking. Codex must reason from project objectives before selecting isolated tasks. `NEXT_TASK.md` is no longer the planning source of truth; it is the short-form recommendation derived from `OBJECTIVES.md` and `OPERATIONS.md`.
 
 Objective-Driven Planning means Codex follows this chain:
 
 ```text
-Objective -> Milestone -> Task -> Validation -> Progress
+Objective -> Milestone -> Task -> Validation -> Progress -> Operations
 ```
 
 - Objective: a project outcome with success criteria, risks, dependencies, milestone status, and progress.
@@ -51,11 +51,13 @@ Objective -> Milestone -> Task -> Validation -> Progress
 - Task: a scoped unit of work selected because it advances or unblocks a milestone.
 - Validation: the tests, checks, and success scenario proving the task advanced the milestone without violating TES contracts.
 - Progress: the objective and milestone status update recorded after work completes or blocks.
+- Operations: throughput, capacity, blocker, duration, usage, and value observations that improve future recommendations.
 
 At Level 3, every task starts with objective intake and ends with objective progress reporting.
 
 Before every future task, Codex must read:
 - `OBJECTIVES.md`
+- `OPERATIONS.md`
 - `ROADMAP.md`
 - `NEXT_TASK.md`
 - `ACTIVE_TASKS.md`
@@ -64,6 +66,7 @@ Before every future task, Codex must read:
 
 After every completed or blocked task, Codex must update, when relevant:
 - `OBJECTIVES.md`
+- `OPERATIONS.md`
 - `ACTIVE_TASKS.md`
 - `COMPLETED_TASKS.md`
 - `NEXT_TASK.md`
@@ -73,17 +76,17 @@ After every completed or blocked task, Codex must update, when relevant:
 
 Level 3 planning files do not authorize product code changes, matching behavior changes, commits, pushes, or pull requests.
 
-### Level 4: Parallel Task Execution
+### Level 4: Parallel Execution Lanes
 
 Status: documented only. Do not enable without explicit human approval.
 
-Level 4 will allow multiple objective-derived tasks to proceed in parallel only when file ownership is disjoint and validation boundaries are clear. Shared files require a single owning task, and integration work must happen last.
+Level 4 will allow multiple objective-derived tasks to proceed in parallel only when file ownership is disjoint, validation boundaries are clear, and operations history supports enough capacity. Shared files require a single owning task, and integration work must happen last.
 
-### Level 5: Multi-Agent Orchestration
+### Level 5: Project Orchestration
 
 Status: documented only. Do not enable without explicit human approval.
 
-Level 5 will allow coordinated multi-agent work across objectives, milestones, and lanes. It must preserve strict file ownership, deterministic validation, and a single integration authority.
+Level 5 will allow coordinated project orchestration across objectives, milestones, operations history, and lanes. It must preserve strict file ownership, deterministic validation, human approval, and a single integration authority.
 
 ## Objective Structure
 
@@ -95,6 +98,10 @@ Every objective in `OBJECTIVES.md` must contain:
 - Milestones
 - Current Status
 - Progress %
+- Completed Milestones
+- Remaining Milestones
+- Current Bottleneck
+- Estimated Next Highest-Value Work
 - Known Risks
 - Dependencies
 
@@ -165,31 +172,50 @@ Prefer work in this order:
 1. Unblockers
 2. Infrastructure required by multiple milestones
 3. User-visible functionality
-4. Automation
-5. Documentation
+4. Validation
+5. Automation
+6. Documentation
 
 Avoid:
 - Duplicate tasks
 - Completed work
 - Low-value busywork
+- Workflow churn
+- Documentation-only loops
 - Documentation before functionality, unless the objective itself is workflow or documentation governance
 
 ## Recommendation Rules
 
-Every completed task must provide Top 3 next tasks. Each recommendation must include:
+Before recommending work, Codex must answer:
+
+```text
+What is the highest-value next task?
+```
+
+Every completed task must provide Top 3 next tasks when possible. Each recommendation must include:
 
 - Impact
 - Risk
 - Dependencies
 - Lane
+- Validation target
+- Operations rationale
 
 Recommendations should be objective-aware. A good recommendation explains which objective and milestone it advances, not only which file it changes.
+
+## Project Operations
+
+`OPERATIONS.md` defines Project Operations and Capacity Tracking for TES. Codex must use it to track objectives, milestones, tasks, throughput, capacity, blockers, usage observations, operations records, objective cost awareness, and efficiency guidance.
+
+Operations records must never invent usage values. If usage data is unavailable, record exactly `Usage unavailable`.
+
+Codex should classify effort as planning work, implementation work, validation work, or documentation work. When planning effort begins to outweigh implementation progress, Codex should report that risk and recommend the smallest validation or implementation task that can produce new evidence.
 
 ## Level 3 Operating Cycle
 
 Use this cycle for every future Level 3 task:
 
-1. Read `OBJECTIVES.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
+1. Read `OBJECTIVES.md`, `OPERATIONS.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
 2. Select the active objective and milestone, or identify that the user supplied a new objective.
 3. Confirm task scope, work lane, file ownership, success scenario, and validation target.
 4. Mark or update the task in `ACTIVE_TASKS.md` when work begins.
@@ -198,8 +224,9 @@ Use this cycle for every future Level 3 task:
 7. Execute the task's `Success Scenario`.
 8. Repair failures within the approved scope and retest.
 9. Update objective and milestone progress when evidence changes.
-10. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
-11. Report completion using the required Level 3 objective-driven report fields.
+10. Update operations observations when throughput, capacity, blocker, duration, usage, or value evidence changes.
+11. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
+12. Report completion using the required Level 3 objective-driven and operations report fields.
 
 ## Validation Commands
 
@@ -296,6 +323,7 @@ Every Level 3 completion report must include:
 - Files changed.
 - Validation results.
 - State updates.
+- Operations summary.
 - Recommended next tasks.
 - Objective status.
 
@@ -337,6 +365,32 @@ Files changed:
 Validation results:
 
 State updates:
+
+Recommended next tasks:
+```
+
+## Required Operations Summary Section
+
+Every Level 3 completion report must include:
+
+```markdown
+## OPERATIONS SUMMARY
+
+Objective:
+
+Current milestone:
+
+Progress:
+
+Completed work:
+
+Remaining work:
+
+Blockers:
+
+Observed duration:
+
+Observed usage:
 
 Recommended next tasks:
 ```
@@ -383,6 +437,25 @@ Files changed:
 Validation results:
 
 State updates:
+
+Recommended next tasks:
+
+## OPERATIONS SUMMARY
+Objective:
+
+Current milestone:
+
+Progress:
+
+Completed work:
+
+Remaining work:
+
+Blockers:
+
+Observed duration:
+
+Observed usage:
 
 Recommended next tasks:
 

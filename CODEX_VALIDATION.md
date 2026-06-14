@@ -1,6 +1,6 @@
 # Codex Validation
 
-This document defines validation expectations for Codex work on TES. Validation is now Level 3: Objective-Driven Planning. Tests and builds are required gates, success scenarios define completion, and objective progress must be refreshed after completed or blocked tasks.
+This document defines validation expectations for Codex work on TES. Validation is now Level 3: Objective-Driven Planning with Project Operations and Capacity Tracking. Tests and builds are required gates, success scenarios define completion, and objective plus operations progress must be refreshed after completed or blocked tasks.
 
 ## Required Commands
 
@@ -36,7 +36,8 @@ Codex must validate more than the local task diff. It must validate whether the 
 
 Before work:
 - Read `OBJECTIVES.md` first.
-- Identify the objective, current milestone, status, progress, risks, dependencies, and validation criteria.
+- Read `OPERATIONS.md`.
+- Identify the objective, current milestone, status, progress, current bottleneck, estimated next highest-value work, risks, dependencies, and validation criteria.
 - Confirm the task is not duplicate completed work.
 
 During work:
@@ -46,8 +47,9 @@ During work:
 
 After work:
 - Update objective or milestone progress when evidence changes.
+- Record operations observations when duration, usage, throughput, capacity, blockers, or value evidence changes.
 - Record blockers if validation cannot complete.
-- Recommend Top 3 next tasks with Impact, Risk, Dependencies, and Lane.
+- Answer `What is the highest-value next task?`, then recommend Top 3 next tasks with Impact, Risk, Dependencies, Lane, validation target, and operations rationale.
 
 ## Level 3 Objective-Driven Loop Validation
 
@@ -57,7 +59,7 @@ For every task, validate the requested user workflow through the task's mandator
 
 The required loop is:
 
-1. Read `OBJECTIVES.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
+1. Read `OBJECTIVES.md`, `OPERATIONS.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
 2. Confirm objective, milestone, task scope, work lane, file ownership, validation target, and success scenario.
 3. Implement only the approved change.
 4. Run tests or validation commands appropriate to the task.
@@ -67,7 +69,8 @@ The required loop is:
 8. Retest.
 9. Repeat until the success scenario succeeds or a blocker prevents completion.
 10. Update objective progress and milestone status when evidence changes.
-11. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
+11. Update operations observations when evidence changes.
+12. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
 
 The loop ends only when:
 - The requested user workflow succeeds and state files are updated.
@@ -89,6 +92,25 @@ Invalid progress evidence includes:
 - Assumptions about behavior not observed.
 - A service start without checking the user-visible workflow.
 - Documentation that describes functionality before functionality exists.
+
+## Operations Validation
+
+Operations updates must be evidence-based.
+
+Valid operations evidence includes:
+- Actual task duration when observed.
+- Actual usage data when available.
+- A clear `Usage unavailable` entry when usage was not available.
+- A completed, blocked, partial, or superseded outcome.
+- A blocker tied to a success scenario step.
+- A qualitative throughput, capacity, or value assessment tied to observed work.
+
+Invalid operations evidence includes:
+- Invented token usage.
+- Invented duration.
+- Progress percentages raised only because planning text changed.
+- Recommendations that repeat completed work.
+- Documentation-only loops when validation or implementation evidence is the higher-value next step.
 
 ## Milestone Validation
 
@@ -128,12 +150,13 @@ Recommended next tasks must:
 
 - Include exactly 1-3 tasks when possible.
 - Identify Objective and Milestone.
-- Include Impact, Risk, Dependencies, and Lane.
+- Include Impact, Risk, Dependencies, Lane, validation target, and operations rationale.
 - Prefer unblockers first.
 - Prefer infrastructure required by multiple milestones.
 - Prefer user-visible functionality before automation.
+- Prefer validation before automation.
 - Prefer automation before documentation.
-- Avoid duplicate tasks, completed work, low-value busywork, and documentation before functionality.
+- Avoid duplicate tasks, completed work, low-value busywork, workflow churn, documentation-only loops, and documentation before functionality.
 - Avoid overlapping file ownership unless the user explicitly approves integration work.
 - Include a validation target or success scenario summary.
 
@@ -217,3 +240,31 @@ Recommended next tasks:
 ```
 
 The `Validation results` field should cite concrete command results. The `Success scenario result` field should cite concrete outputs such as file paths, logs, screenshots, generated artifacts, or observed UI state.
+
+## Required Operations Summary Section
+
+Use this format for Level 3 tasks:
+
+```markdown
+## OPERATIONS SUMMARY
+
+Objective:
+
+Current milestone:
+
+Progress:
+
+Completed work:
+
+Remaining work:
+
+Blockers:
+
+Observed duration:
+
+Observed usage:
+
+Recommended next tasks:
+```
+
+`Observed usage` must contain actual available usage data or `Usage unavailable`.

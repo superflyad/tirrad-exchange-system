@@ -15,6 +15,7 @@ Mode:
 
 Required pre-task objective and state intake:
 - [ ] Read `OBJECTIVES.md`
+- [ ] Read `OPERATIONS.md`
 - [ ] Read `ROADMAP.md`
 - [ ] Read `NEXT_TASK.md`
 - [ ] Read `ACTIVE_TASKS.md`
@@ -25,6 +26,10 @@ Objective:
 - Title:
 - Current Status:
 - Progress %:
+- Completed milestones:
+- Remaining milestones:
+- Current bottleneck:
+- Estimated next highest-value work:
 
 Milestone:
 - Name:
@@ -61,8 +66,19 @@ Contract safety:
 Task generation and ranking:
 - [ ] Confirm the task advances or unblocks the named milestone.
 - [ ] Reject duplicate work already completed.
-- [ ] Prefer unblockers, shared infrastructure, user-visible functionality, automation, then documentation.
+- [ ] Answer: What is the highest-value next task?
+- [ ] Prefer unblockers, shared infrastructure, user-visible functionality, validation, automation, then documentation.
+- [ ] Avoid workflow churn and documentation-only loops.
 - [ ] Record Impact, Risk, Dependencies, and Lane for recommended follow-ups.
+- [ ] Record operations rationale for recommended follow-ups.
+
+Operations tracking:
+- Duration:
+- Observed usage:
+- Throughput notes:
+- Capacity notes:
+- Blockers:
+- Value assessment:
 
 Validation Commands:
 - [ ] `./tes check`
@@ -81,6 +97,7 @@ Success Scenario:
 
 Required post-task state updates:
 - [ ] Update `OBJECTIVES.md` if objective or milestone progress changed.
+- [ ] Update `OPERATIONS.md` if operations guidance or example records changed.
 - [ ] Update `ACTIVE_TASKS.md`
 - [ ] Update `COMPLETED_TASKS.md`
 - [ ] Update `NEXT_TASK.md`
@@ -157,6 +174,25 @@ State updates:
 
 Recommended next tasks:
 
+## OPERATIONS SUMMARY
+Objective:
+
+Current milestone:
+
+Progress:
+
+Completed work:
+
+Remaining work:
+
+Blockers:
+
+Observed duration:
+
+Observed usage:
+
+Recommended next tasks:
+
 ## Risks
 -
 ```
@@ -168,8 +204,8 @@ Outcome-validate a milestone in the One-command local onboarding objective.
 
 Pre-task intake:
 1. Read `OBJECTIVES.md` first.
-2. Identify the active objective, current milestone, objective progress, risks, and dependencies.
-3. Read `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
+2. Identify the active objective, current milestone, objective progress, risks, dependencies, current bottleneck, and estimated next highest-value work.
+3. Read `OPERATIONS.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
 
 Execution:
 1. Classify the task by lane.
@@ -178,6 +214,7 @@ Execution:
 4. Run the selected validation command.
 5. Execute the success scenario.
 6. Record whether the milestone advanced, completed, or blocked.
+7. Record operations observations when duration, usage, throughput, capacity, blockers, or value evidence is available.
 
 Post-task state update:
 1. Update `OBJECTIVES.md` when evidence changes objective or milestone progress.
@@ -185,7 +222,7 @@ Post-task state update:
 3. Add the result to `COMPLETED_TASKS.md`.
 4. Refresh `NEXT_TASK.md` with the Top 3 objective-aware recommendations.
 5. Refresh `CODEX_STATE.md` with phase, priorities, blockers, lanes, last completed task, and workflow level.
-6. Report objective status and Level 3 completion fields.
+6. Report objective status, Level 3 completion fields, and the operations summary.
 
 ## Recommended First Level 3 Objective-Driven Task Batch
 

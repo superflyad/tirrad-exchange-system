@@ -4,7 +4,7 @@ This file is the compact Level 3 operating snapshot for TES. Codex must read it 
 
 ## Current Workflow Level
 
-Level 3: Objective-Driven Planning
+Level 3: Objective-Driven Planning with Project Operations and Capacity Tracking
 
 ## Current Project Phase
 
@@ -13,23 +13,25 @@ Objective-driven workflow hardening and local onboarding validation.
 ## Active Planning Model
 
 ```text
-Objective -> Milestone -> Task -> Validation -> Progress
+Objective -> Milestone -> Task -> Validation -> Progress -> Operations
 ```
 
-Codex must read `OBJECTIVES.md` before `NEXT_TASK.md`, derive candidate tasks from objective and milestone status, and keep progress evidence-based.
+Codex must read `OBJECTIVES.md` and `OPERATIONS.md` before `NEXT_TASK.md`, derive candidate tasks from objective and milestone status, and keep progress, capacity, throughput, blocker, and usage observations evidence-based.
 
 ## Current Priorities
 
 1. Prove the existing `./tes dev --demo-run` workflow through current end-to-end outcome evidence.
 2. Track the One-command local onboarding objective through milestones, validation criteria, and progress updates.
-3. Keep strict command and event contracts intact across simulation, API, analytics, and serialization boundaries.
-4. Prefer small, independent tasks with clear file ownership and observable success scenarios.
-5. Preserve `./tes` as the single workflow entry point for build, test, and local development operations.
+3. Use Project Operations to answer `What is the highest-value next task?` before recommending work.
+4. Keep strict command and event contracts intact across simulation, API, analytics, and serialization boundaries.
+5. Prefer small, independent tasks with clear file ownership and observable success scenarios.
+6. Preserve `./tes` as the single workflow entry point for build, test, and local development operations.
 
 ## Current Project Status
 
 - Level 3 Objective-Driven Planning is active.
 - `OBJECTIVES.md` is the first planning input.
+- `OPERATIONS.md` defines throughput, capacity, blocker, usage, and value tracking.
 - No active task is currently in progress.
 - `./tes dev --demo-run` is implemented in the repository and documented for local development.
 - The highest-value next task is outcome validation of the existing workflow against the One-command local onboarding objective.
@@ -42,12 +44,22 @@ Codex must read `OBJECTIVES.md` before `NEXT_TASK.md`, derive candidate tasks fr
 - Progress: 35%
 - Current milestones: Build verification and Unified local startup are active; Python verification, Outcome validation, and Automated smoke validation are not started.
 - Blockers: No known active blocker. Current evidence gap is unvalidated local outcome behavior on this machine.
+- Current bottleneck: Current local outcome evidence for `./tes dev --demo-run` is unavailable.
+- Estimated next highest-value work: Outcome-validate `./tes dev --demo-run` and capture dashboard health, generated `run_id`, run detail, replay visibility, and clean shutdown.
+
+## Operations Snapshot
+
+- Throughput: Recent completed work has primarily improved workflow governance and planning quality.
+- Capacity: Good for workflow and state maintenance; product validation capacity still depends on local API/dashboard startup evidence.
+- Usage observations: Usage unavailable.
+- Efficiency note: Planning and workflow structure are now mature enough that the next highest-value work should produce validation evidence unless the user explicitly requests more workflow governance.
 
 ## Completed Capabilities
 
 - Level 2 Outcome Validation workflow documentation.
 - Level 3 Project Operating Loop state files and maintenance rules.
 - Level 3 Objective-Driven Planning docs and objective model.
+- Project Operations and Capacity Tracking framework.
 - Root `./tes` workflow entry point for checks, API commands, local development startup, and demo-run startup.
 - API demo-run helper that prints run and replay URLs.
 - Dashboard run, live monitor, and replay surfaces documented and present in the codebase.
@@ -77,8 +89,9 @@ Upgrade workflow to Objective-Driven Planning.
 ## Operating Notes
 
 - Before every future task, read `OBJECTIVES.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
-- After every completed task, update `OBJECTIVES.md` when progress changes, then update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
-- Recommended next tasks must include Impact, Risk, Dependencies, and Lane.
-- Prefer unblockers, shared infrastructure, user-visible functionality, automation, then documentation.
-- Avoid duplicate tasks, completed work, low-value busywork, and documentation before functionality unless the objective is workflow governance.
+- Before capacity, usage, throughput, or recommendation-value claims, read `OPERATIONS.md`.
+- After every completed task, update `OBJECTIVES.md` when progress changes, update operations observations when evidence changes, then update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
+- Recommended next tasks must include Impact, Risk, Dependencies, Lane, validation target, and operations rationale.
+- Prefer unblockers, shared infrastructure, user-visible functionality, validation, automation, then documentation.
+- Avoid duplicate tasks, completed work, low-value busywork, workflow churn, documentation-only loops, and documentation before functionality unless the objective is workflow governance.
 - Do not commit or push unless the user explicitly approves that action for the specific task.

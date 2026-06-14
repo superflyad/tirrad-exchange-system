@@ -1,24 +1,35 @@
 # Codex Task Template
 
-Use this template for Codex tasks. Level 3 Project Operating Loop is active for future work: tasks are complete only when the requested user workflow succeeds or a documented blocker prevents completion, and project state is refreshed afterward.
+Use this template for Codex tasks. Level 3 Objective-Driven Planning is active for future work: tasks must be selected from project objectives, tied to milestones, validated through success scenarios, and reflected back into project state.
 
 ```markdown
 Task:
 
-Objective:
+Goal:
 
 Workflow level:
-- Level 3: project operating loop
+- Level 3: Objective-Driven Planning
 
 Mode:
 - Investigation-only / Edit
 
-Required pre-task state intake:
+Required pre-task objective and state intake:
+- [ ] Read `OBJECTIVES.md`
 - [ ] Read `ROADMAP.md`
 - [ ] Read `NEXT_TASK.md`
 - [ ] Read `ACTIVE_TASKS.md`
 - [ ] Read `COMPLETED_TASKS.md`
 - [ ] Read `CODEX_STATE.md`
+
+Objective:
+- Title:
+- Current Status:
+- Progress %:
+
+Milestone:
+- Name:
+- Status: Not Started / Active / Blocked / Complete
+- Validation Criteria:
 
 Work lane:
 - Core/API / Dashboard/UI / Dev Workflow / Tests/Documentation
@@ -47,6 +58,12 @@ Contract safety:
 - Do not weaken parsers or validators.
 - Do not pass raw dictionaries beyond parser or serialization boundaries when strict models exist.
 
+Task generation and ranking:
+- [ ] Confirm the task advances or unblocks the named milestone.
+- [ ] Reject duplicate work already completed.
+- [ ] Prefer unblockers, shared infrastructure, user-visible functionality, automation, then documentation.
+- [ ] Record Impact, Risk, Dependencies, and Lane for recommended follow-ups.
+
 Validation Commands:
 - [ ] `./tes check`
 - [ ] `./tes check python`
@@ -63,17 +80,34 @@ Success Scenario:
 3.
 
 Required post-task state updates:
+- [ ] Update `OBJECTIVES.md` if objective or milestone progress changed.
 - [ ] Update `ACTIVE_TASKS.md`
 - [ ] Update `COMPLETED_TASKS.md`
 - [ ] Update `NEXT_TASK.md`
 - [ ] Update `CODEX_STATE.md`
 
-Task recommendation rules:
-- Recommend 1-3 next tasks.
-- Prefer highest-impact tasks.
-- Prefer independent tasks.
-- Avoid overlapping file ownership.
-- Include lane and validation target for each recommendation.
+Top 3 next tasks:
+1. Title:
+   - Objective:
+   - Milestone:
+   - Impact:
+   - Risk:
+   - Dependencies:
+   - Lane:
+2. Title:
+   - Objective:
+   - Milestone:
+   - Impact:
+   - Risk:
+   - Dependencies:
+   - Lane:
+3. Title:
+   - Objective:
+   - Milestone:
+   - Impact:
+   - Risk:
+   - Dependencies:
+   - Lane:
 
 Acceptance:
 -
@@ -82,14 +116,6 @@ Permissions:
 - Do not commit.
 - Do not push.
 - Stop after completion report.
-
-Completion report must include:
-- Completed task.
-- Success scenario result.
-- Files changed.
-- Validation results.
-- State updates.
-- Recommended next tasks.
 
 Completion Report:
 
@@ -104,6 +130,19 @@ Completion Report:
 - `git diff --stat`: passed / failed / not run
 - `git diff --check`: passed / failed / not run
 - Other commands actually run:
+
+## OBJECTIVE STATUS
+Objective:
+
+Current milestone:
+
+Progress:
+
+Remaining milestones:
+
+Blockers:
+
+Recommended next tasks:
 
 ## LEVEL 3 COMPLETION REPORT
 Completed task:
@@ -122,34 +161,34 @@ Recommended next tasks:
 -
 ```
 
-## Example Level 3 Operating Cycle
+## Example Level 3 Objective-Driven Cycle
 
 Task:
-Update a workflow document without product code changes.
+Outcome-validate a milestone in the One-command local onboarding objective.
 
 Pre-task intake:
-1. Read `ROADMAP.md`.
-2. Read `NEXT_TASK.md`.
-3. Read `ACTIVE_TASKS.md`.
-4. Read `COMPLETED_TASKS.md`.
-5. Read `CODEX_STATE.md`.
+1. Read `OBJECTIVES.md` first.
+2. Identify the active objective, current milestone, objective progress, risks, and dependencies.
+3. Read `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
 
 Execution:
-1. Classify the task as `Dev Workflow`.
+1. Classify the task by lane.
 2. Record the in-progress task in `ACTIVE_TASKS.md`.
-3. Edit only approved workflow files.
-4. Run `git status`, `git diff --stat`, and `git diff --check`.
-5. Confirm the success scenario: requested docs exist, state files exist, product code is untouched, and validation passes.
+3. Edit only approved files.
+4. Run the selected validation command.
+5. Execute the success scenario.
+6. Record whether the milestone advanced, completed, or blocked.
 
 Post-task state update:
-1. Remove or complete the task in `ACTIVE_TASKS.md`.
-2. Add the task result to `COMPLETED_TASKS.md`.
-3. Refresh `NEXT_TASK.md` with 1-3 independent next tasks.
-4. Refresh `CODEX_STATE.md` with phase, priorities, blockers, recommended work lanes, last completed task, and current workflow level.
-5. Report the required Level 3 completion fields.
+1. Update `OBJECTIVES.md` when evidence changes objective or milestone progress.
+2. Remove or block the task in `ACTIVE_TASKS.md`.
+3. Add the result to `COMPLETED_TASKS.md`.
+4. Refresh `NEXT_TASK.md` with the Top 3 objective-aware recommendations.
+5. Refresh `CODEX_STATE.md` with phase, priorities, blockers, lanes, last completed task, and workflow level.
+6. Report objective status and Level 3 completion fields.
 
-## Recommended First Level 3 Task Batch
+## Recommended First Level 3 Objective-Driven Task Batch
 
-1. Dev Workflow: Implement and validate `./tes dev --demo-run` as the first outcome-tested operating-loop task.
-2. Tests/Documentation: Document the Level 3 intake and completion-report expectations in contributor-facing docs after the workflow loop proves stable.
-3. Dashboard/UI: Inspect dashboard run/replay flows and identify the smallest independent UI validation gap before implementation.
+1. Dev Workflow: Outcome-validate `./tes dev --demo-run` against the One-command local onboarding objective.
+2. Dashboard/UI: Verify generated demo runs are visible in dashboard run detail and replay views after startup validation succeeds.
+3. Tests/Documentation: Add automated smoke validation or contributor guidance only after the executable workflow has current evidence.

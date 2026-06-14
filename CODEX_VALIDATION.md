@@ -1,6 +1,6 @@
 # Codex Validation
 
-This document defines validation expectations for Codex work on TES. Validation is now Level 3: Project Operating Loop. Tests and builds are required gates, success scenarios define completion, and project state must be refreshed after completed tasks.
+This document defines validation expectations for Codex work on TES. Validation is now Level 3: Objective-Driven Planning. Tests and builds are required gates, success scenarios define completion, and objective progress must be refreshed after completed or blocked tasks.
 
 ## Required Commands
 
@@ -27,28 +27,38 @@ git diff --check
 - Python-only changes: run at least `./tes check python-release`.
 - Web changes: run `cd web && npm run build`.
 - Docs-only workflow changes: full build is optional; at minimum, run `git status`, `git diff --stat`, and `git diff --check` when requested.
-- State-only Level 3 maintenance: run `git status`, `git diff --stat`, and `git diff --check` unless a broader validation command is requested.
-
-## Test-Fix-Retest Rules
-
-- Reproduce the failure before changing code when practical.
-- Fix only failures connected to the approved task.
-- Re-run the relevant command after each fix.
-- Add tests for new behavior.
-- Add rejection tests when modifying validators or parsers.
-- Do not weaken strictness to make tests pass.
+- Objective/state-only Level 3 maintenance: run `git status`, `git diff --stat`, and `git diff --check` unless a broader validation command is requested.
 - Do not claim success for commands that were not run.
 
-## Level 3 Project Operating Loop Validation
+## Objective-Driven Validation
+
+Codex must validate more than the local task diff. It must validate whether the task advanced the selected objective and milestone.
+
+Before work:
+- Read `OBJECTIVES.md` first.
+- Identify the objective, current milestone, status, progress, risks, dependencies, and validation criteria.
+- Confirm the task is not duplicate completed work.
+
+During work:
+- Run the validation command appropriate to the approved scope.
+- Execute the success scenario.
+- Observe actual workflow evidence, not only build or test output.
+
+After work:
+- Update objective or milestone progress when evidence changes.
+- Record blockers if validation cannot complete.
+- Recommend Top 3 next tasks with Impact, Risk, Dependencies, and Lane.
+
+## Level 3 Objective-Driven Loop Validation
 
 Codex must not stop merely because code compiles, tests pass, or services start. Those results are necessary evidence, not completion.
 
-For every task, validate the requested user workflow through the task's mandatory `Success Scenario`, then update project state.
+For every task, validate the requested user workflow through the task's mandatory `Success Scenario`, then update objective and project state.
 
 The required loop is:
 
-1. Read `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
-2. Confirm task scope, work lane, file ownership, validation target, and success scenario.
+1. Read `OBJECTIVES.md`, `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
+2. Confirm objective, milestone, task scope, work lane, file ownership, validation target, and success scenario.
 3. Implement only the approved change.
 4. Run tests or validation commands appropriate to the task.
 5. Execute the user workflow described in the success scenario.
@@ -56,31 +66,49 @@ The required loop is:
 7. Repair failures within the approved scope.
 8. Retest.
 9. Repeat until the success scenario succeeds or a blocker prevents completion.
-10. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
+10. Update objective progress and milestone status when evidence changes.
+11. Update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
 
 The loop ends only when:
 - The requested user workflow succeeds and state files are updated.
 - Or a documented blocker prevents completion and state files record the blocker.
 
+## Objective Progress Validation
+
+Objective progress must be evidence-based.
+
+Valid progress evidence includes:
+- A milestone validation command passed.
+- A success scenario step was executed and observed.
+- A blocker was reproduced and documented.
+- A dependency was removed.
+- A stale recommendation was retired because the work is already complete.
+
+Invalid progress evidence includes:
+- Planning text without executed validation.
+- Assumptions about behavior not observed.
+- A service start without checking the user-visible workflow.
+- Documentation that describes functionality before functionality exists.
+
+## Milestone Validation
+
+A milestone is `Complete` only when:
+- Its validation criteria have current evidence.
+- Related tasks are complete or intentionally deferred.
+- Remaining risks do not block the milestone's stated outcome.
+
+A milestone is `Blocked` when:
+- Its next validation step cannot run because of missing credentials, unavailable services, missing dependencies, insufficient permissions, unavailable local data, or an external prerequisite.
+
+A milestone remains `Active` when:
+- Work has begun but the validation criteria are not yet satisfied.
+
+A milestone remains `Not Started` when:
+- No current work or validation evidence exists.
+
 ## Success Scenario Validation
 
 Each task must include a `Success Scenario` section. Codex must execute the listed steps after implementation and test validation whenever the environment allows it.
-
-Example:
-
-```markdown
-Task:
-./tes dev --demo-run
-
-Success Scenario:
-1. Start stack.
-2. Open dashboard.
-3. Verify health page.
-4. Generate run.
-5. Verify run appears.
-6. Verify replay data loads.
-7. Shut down cleanly.
-```
 
 Completion requires every step to succeed. If a step cannot be executed, Codex must document the blocker and stop only after explaining what is needed to complete the scenario.
 
@@ -88,33 +116,30 @@ Completion requires every step to succeed. If a step cannot be executed, Codex m
 
 After every completed Level 3 task, Codex must validate that state updates occurred:
 
+- `OBJECTIVES.md` reflects objective and milestone progress when changed.
 - `ACTIVE_TASKS.md` no longer lists the completed task as active, or marks it blocked with a clear blocker.
-- `COMPLETED_TASKS.md` contains the completed task, success scenario result, files changed, validation run, and follow-up.
-- `NEXT_TASK.md` recommends 1-3 next tasks.
+- `COMPLETED_TASKS.md` contains the completed task, success scenario result, files changed, validation run, objective status, and follow-up.
+- `NEXT_TASK.md` recommends 1-3 objective-aware next tasks.
 - `CODEX_STATE.md` reflects current project phase, current priorities, known blockers, recommended work lanes, last completed task, and current workflow level.
 
 ## Task Recommendation Validation
 
 Recommended next tasks must:
 
-- Include 1-3 tasks.
-- Prefer highest-impact work.
-- Prefer independent work.
-- Avoid overlapping file ownership.
-- Name the work lane: Core/API, Dashboard/UI, Dev Workflow, or Tests/Documentation.
+- Include exactly 1-3 tasks when possible.
+- Identify Objective and Milestone.
+- Include Impact, Risk, Dependencies, and Lane.
+- Prefer unblockers first.
+- Prefer infrastructure required by multiple milestones.
+- Prefer user-visible functionality before automation.
+- Prefer automation before documentation.
+- Avoid duplicate tasks, completed work, low-value busywork, and documentation before functionality.
+- Avoid overlapping file ownership unless the user explicitly approves integration work.
 - Include a validation target or success scenario summary.
 
 ## Blocker Rules
 
 Report a blocker when the success scenario cannot be completed because of a prerequisite Codex cannot satisfy within the approved scope.
-
-Examples:
-- Missing credentials.
-- External service unavailable.
-- Missing dependency.
-- Insufficient permissions.
-- Required local data, fixture, or configuration unavailable.
-- Network or browser capability unavailable for a required check.
 
 For blockers, report:
 - Blocked success scenario step.
@@ -150,6 +175,26 @@ Use this validation format:
 ```
 
 Only mark a command as passed when it was actually run and exited successfully.
+
+## Required Objective Status Section
+
+Use this format for Level 3 tasks:
+
+```markdown
+## OBJECTIVE STATUS
+
+Objective:
+
+Current milestone:
+
+Progress:
+
+Remaining milestones:
+
+Blockers:
+
+Recommended next tasks:
+```
 
 ## Required Completion Report Level 3 Section
 

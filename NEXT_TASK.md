@@ -1,29 +1,29 @@
 # Next Task
 
-## Recommended First Level 3 Task Batch
+## Recommended Level 3 Task Batch
 
 These tasks are ordered by impact and independence. Pick one unless the user explicitly approves parallel work with disjoint file ownership.
 
-### 1. Implement `./tes dev --demo-run`
+### 1. Outcome-validate `./tes dev --demo-run`
 
 - Lane: Dev Workflow
-- Goal: Create a deterministic demo-run workflow that proves the Level 3 operating loop through an observable local outcome.
-- Suggested file ownership: `tes`, workflow documentation for the command, and focused tests for the command behavior.
-- Avoid touching: engine matching behavior, Python-visible event contracts, dashboard behavior, and strict command/event models unless explicitly approved.
-- Validation target: Run the command-level tests added for the workflow, then run broader `./tes` validation that matches the final implementation scope.
+- Goal: Prove the already-implemented local development workflow through the observable dashboard/run/replay outcome.
+- Suggested file ownership: no product-code ownership for validation-only mode; if a defect is found, scope a follow-up fix to the smallest affected files.
+- Avoid touching: engine matching behavior, Python-visible event contracts, dashboard behavior, and strict command/event models unless a defect requires an explicitly scoped follow-up.
+- Validation target: run the existing command-level tests that cover the root `tes` launcher, then run `./tes dev --demo-run` and capture the generated `run_id`, dashboard health, run detail, and replay availability.
 
 Success Scenario:
-1. Start the local stack or required local surfaces.
-2. Open or verify the dashboard health surface.
-3. Generate a deterministic demo run.
-4. Verify the run appears in the expected run listing or output.
-5. Verify replay data loads or is available through the expected path.
+1. `./tes dev --demo-run` starts the persisted API and dashboard.
+2. Dashboard health confirms the API is OK.
+3. The command prints a non-empty `run_id`.
+4. The generated run appears in the dashboard run list or API run listing.
+5. The run detail and replay pages load for the printed `run_id`.
 6. Shut down cleanly.
 
 ### 2. Document Level 3 contributor usage
 
 - Lane: Tests/Documentation
-- Goal: Add contributor-facing guidance for using the Level 3 intake, state update, and completion report loop after the first operating-loop task proves the workflow.
+- Goal: Add contributor-facing guidance for using the Level 3 intake, state update, and completion report loop after the executable workflow has current outcome evidence.
 - Suggested file ownership: documentation files only.
 - Avoid touching: product code and workflow command behavior.
 - Validation target: `git status`, `git diff --stat`, `git diff --check`, plus any docs checks that exist at the time.
@@ -36,7 +36,7 @@ Success Scenario:
 ### 3. Inspect dashboard run/replay validation gaps
 
 - Lane: Dashboard/UI
-- Goal: Identify the smallest independent dashboard workflow validation gap to implement after `./tes dev --demo-run` exists.
+- Goal: Identify the smallest independent dashboard workflow validation gap after the existing `./tes dev --demo-run` path is outcome-validated.
 - Suggested file ownership: investigation report only unless implementation is explicitly approved.
 - Avoid touching: product code during investigation-only mode.
 - Validation target: report-only success scenario unless a follow-up implementation task is approved.
@@ -48,7 +48,7 @@ Success Scenario:
 
 ## Current Recommendation
 
-Start with task 1: implement `./tes dev --demo-run`. It has the highest operating-loop value because it turns the workflow standard into an executable local path.
+Start with task 1: outcome-validate `./tes dev --demo-run`. The command already exists, so the highest-value next step is proving the actual operator workflow and recording current evidence instead of re-implementing completed work.
 
 ## Permissions
 

@@ -10,9 +10,9 @@ Level 3 keeps outcome validation from Level 2 and adds project state maintenance
 
 ## Near-Term Workflow Tasks
 
-1. Implement `./tes dev --demo-run` as the first Level 3 operating-loop task.
-2. Define the expected local development startup behavior for engine, simulation, API, and web surfaces.
-3. Add validation coverage for any new workflow command behavior.
+1. Outcome-validate the existing `./tes dev --demo-run` workflow from command startup through dashboard run/replay inspection.
+2. Close any validation gaps found in the local development startup behavior for API, dashboard, persisted run creation, and replay surfaces.
+3. Document contributor-facing Level 3 usage only after the executable workflow has current outcome evidence.
 4. Keep Level 3 state files current after each completed task.
 
 ## Operating Principles

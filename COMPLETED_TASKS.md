@@ -4,6 +4,24 @@ Level 3 task completion updates this file after every completed task. Newest ent
 
 ## 2026-06-14
 
+### Validate Level 3 state operating loop
+
+- Lane: Dev Workflow / Tests/Documentation
+- Success scenario result: Read `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`; detected completed workflow work, stale roadmap entries, and duplicate recommendations; refreshed state files without product-code changes.
+- Files changed: `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `CODEX_STATE.md`
+- Validation run: `git status`, repository search for `demo-run` and Level 3 planning entries, `git diff --stat`, and `git diff --check`.
+- State updates: Marked `./tes dev --demo-run` as implemented-but-needing-current-outcome-validation, removed stale implementation-first language, and refreshed the recommended task batch and lane priorities.
+- Recommended follow-up: Outcome-validate `./tes dev --demo-run` end to end, including dashboard health, generated `run_id`, run listing, run detail, and replay availability.
+
+### Add unified local dev workflow command
+
+- Lane: Dev Workflow
+- Success scenario result: The repository now contains a root `./tes dev [--demo-run]` workflow, API demo-run helper, local development documentation, README entry, and root launcher tests covering the command surface.
+- Files changed: product and documentation files from earlier committed work, including `tes`, `sim/api/main.py`, local development docs, README, and root CLI tests.
+- Validation run: Not rerun during this state-only reconciliation; detected from repository contents and commit history.
+- State updates: Recorded as completed capability because current state files still recommended implementing work that already exists.
+- Recommended follow-up: Validate the implemented workflow through the full Level 3 success scenario before treating it as fully outcome-proven.
+
 ### Upgrade Codex workflow to Level 3 Project Operating Loop
 
 - Lane: Dev Workflow

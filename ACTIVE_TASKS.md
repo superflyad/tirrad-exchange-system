@@ -6,6 +6,10 @@ Level 3 task intake reads this file before every task. Keep active entries scope
 
 No active tasks.
 
+## Recently Reconciled
+
+- 2026-06-14: Level 3 operating-loop validation found no active in-progress task. The previous recommendation to implement `./tes dev --demo-run` is stale because the command is already present; next work should validate the existing workflow outcome.
+
 ## Entry Format
 
 ```markdown

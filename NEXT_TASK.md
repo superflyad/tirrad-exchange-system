@@ -1,53 +1,54 @@
 # Next Task
 
-## Recommended Level 2 Implementation Task
+## Recommended First Level 3 Task Batch
 
-Implement `./tes dev --demo-run` as the first outcome-validated workflow.
+These tasks are ordered by impact and independence. Pick one unless the user explicitly approves parallel work with disjoint file ownership.
 
-## Goal
+### 1. Implement `./tes dev --demo-run`
 
-Create a deterministic demo-run workflow that can be validated from command start through observable user outcome, proving the new Level 2 workflow standard in practice.
+- Lane: Dev Workflow
+- Goal: Create a deterministic demo-run workflow that proves the Level 3 operating loop through an observable local outcome.
+- Suggested file ownership: `tes`, workflow documentation for the command, and focused tests for the command behavior.
+- Avoid touching: engine matching behavior, Python-visible event contracts, dashboard behavior, and strict command/event models unless explicitly approved.
+- Validation target: Run the command-level tests added for the workflow, then run broader `./tes` validation that matches the final implementation scope.
 
-## Suggested Scope
+Success Scenario:
+1. Start the local stack or required local surfaces.
+2. Open or verify the dashboard health surface.
+3. Generate a deterministic demo run.
+4. Verify the run appears in the expected run listing or output.
+5. Verify replay data loads or is available through the expected path.
+6. Shut down cleanly.
 
-- Inspect the existing `tes` workflow script.
-- Define the intended `./tes dev --demo-run` behavior before implementation.
-- Keep the implementation limited to the approved workflow command and supporting tests or documentation.
-- Do not change engine matching behavior, public API contracts, dashboard behavior, or strict command/event models unless explicitly approved.
-- Add or update tests for the workflow command where practical.
-- Update documentation for the command.
+### 2. Document Level 3 contributor usage
 
-## Success Scenario
+- Lane: Tests/Documentation
+- Goal: Add contributor-facing guidance for using the Level 3 intake, state update, and completion report loop after the first operating-loop task proves the workflow.
+- Suggested file ownership: documentation files only.
+- Avoid touching: product code and workflow command behavior.
+- Validation target: `git status`, `git diff --stat`, `git diff --check`, plus any docs checks that exist at the time.
 
-1. Start stack.
-2. Open dashboard.
-3. Verify health page.
-4. Generate run.
-5. Verify run appears.
-6. Verify replay data loads.
-7. Shut down cleanly.
+Success Scenario:
+1. A contributor can identify which state files Codex reads before work.
+2. A contributor can identify which state files Codex updates after work.
+3. A contributor can copy a valid Level 3 task prompt and completion report structure.
 
-The task is incomplete until all steps succeed or a blocker is documented with evidence.
+### 3. Inspect dashboard run/replay validation gaps
 
-## Validation
+- Lane: Dashboard/UI
+- Goal: Identify the smallest independent dashboard workflow validation gap to implement after `./tes dev --demo-run` exists.
+- Suggested file ownership: investigation report only unless implementation is explicitly approved.
+- Avoid touching: product code during investigation-only mode.
+- Validation target: report-only success scenario unless a follow-up implementation task is approved.
 
-- `./tes check`
-- `./tes check python`
-- `./tes check python-release`
-- `cd web && npm run build`
+Success Scenario:
+1. Read dashboard run, replay, and live monitor surfaces.
+2. Identify current tests or missing tests for the run/replay workflow.
+3. Recommend one scoped UI validation task with non-overlapping file ownership.
 
-Run only the commands that match the approved implementation scope, then execute the success scenario. Report exactly what was run and what was observed.
+## Current Recommendation
 
-## Completion Report
-
-The completion report must include:
-- Files changed.
-- Validation commands run and results.
-- SUCCESS SCENARIO.
-- Evidence for each completed scenario step.
-- Remaining issues.
-- Blockers.
-- Recommended next task.
+Start with task 1: implement `./tes dev --demo-run`. It has the highest operating-loop value because it turns the workflow standard into an executable local path.
 
 ## Permissions
 

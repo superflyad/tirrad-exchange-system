@@ -1,11 +1,11 @@
 # Codex Workflow
 
-This document defines how Codex should operate on Tirrad Exchange System (TES). The goal is controlled, iterative work that preserves deterministic behavior, strict contracts, and clear human review points.
+This document defines how Codex should operate on Tirrad Exchange System (TES). The goal is controlled, iterative work that preserves deterministic behavior, strict contracts, project memory, and clear human review points.
 
 ## Roles
 
 - ChatGPT: architect, task framer, and reviewer. ChatGPT should help shape the work, identify risks, and review outcomes before merge decisions.
-- Codex: local implementation worker. Codex investigates, edits, tests, and reports within the approved task scope.
+- Codex: local implementation worker. Codex investigates, edits, tests, maintains approved project state, and reports within the approved task scope.
 - User: final verifier and merge approver. The user decides what is accepted, merged, released, or deferred.
 
 ## Environment Assumptions
@@ -20,7 +20,7 @@ This document defines how Codex should operate on Tirrad Exchange System (TES). 
 
 ### Level 1: Task Execution
 
-Status: baseline behavior.
+Status: historical baseline.
 
 Level 1 means Codex executes the approved task scope, runs the requested validation commands, and reports the result. Level 1 is not sufficient for completion when the user asked for a working workflow or observable outcome.
 
@@ -28,9 +28,9 @@ Level 1 completion is limited to task execution evidence such as changed files, 
 
 ### Level 2: Outcome Validation
 
-Status: active for future Codex tasks.
+Status: superseded by Level 3.
 
-Level 2 means Codex must validate the requested user outcome, not only the implementation task. Every future task must include a mandatory `Success Scenario` section that describes the concrete workflow that proves the requested outcome works.
+Level 2 means Codex validates the requested user outcome, not only the implementation task. Every task must include a mandatory `Success Scenario` section that describes the concrete workflow that proves the requested outcome works.
 
 At Level 2, a task is not complete because:
 - Code compiles.
@@ -43,11 +43,28 @@ At Level 2, a task is complete only when:
 
 Codex must continue through the validation loop until one of those completion conditions is true.
 
-### Level 3: Roadmap and State Maintenance
+### Level 3: Project Operating Loop
 
-Status: documented only. Requires human approval before use.
+Status: active for future Codex tasks.
 
-Level 3 allows Codex to maintain project state files such as `ROADMAP.md` and `NEXT_TASK.md` after completing approved tasks. Codex may suggest updates, but the user must approve use of this level before Codex treats roadmap maintenance as part of normal work.
+Level 3 keeps Level 2 outcome validation and adds project state maintenance. Codex must maintain lightweight state files so future tasks can start from the current project status, recent work, known blockers, and recommended next work without requiring the user to restate context.
+
+At Level 3, every future task starts with a state intake and ends with a state update.
+
+Before every future task, Codex must read:
+- `ROADMAP.md`
+- `NEXT_TASK.md`
+- `ACTIVE_TASKS.md`
+- `COMPLETED_TASKS.md`
+- `CODEX_STATE.md`
+
+After every completed task, Codex must update:
+- `ACTIVE_TASKS.md`
+- `COMPLETED_TASKS.md`
+- `NEXT_TASK.md`
+- `CODEX_STATE.md`
+
+Level 3 state files are planning and coordination artifacts. They do not authorize product code changes, matching behavior changes, commits, pushes, or pull requests.
 
 ### Level 4: Issue and PR Operating Loop
 
@@ -60,6 +77,44 @@ Level 4 allows Codex to operate from issues or pull requests, inspect review fee
 Status: documented only. Requires human approval before use.
 
 Level 5 is reserved for future coordinated work across independent task lanes. Parallel tasks must have disjoint file ownership. Shared files require a single owning task, and integration work must happen last.
+
+## Level 3 State Files
+
+`CODEX_STATE.md` is the compact operating snapshot. It must track:
+- Current project phase.
+- Current priorities.
+- Known blockers.
+- Recommended work lanes.
+- Last completed task.
+- Current workflow level.
+
+`ACTIVE_TASKS.md` tracks tasks currently in progress, blocked, or ready to resume. It should include task name, lane, status, owner if known, file ownership, validation target, and blocker if any.
+
+`COMPLETED_TASKS.md` tracks completed tasks in reverse chronological order. Each entry should include completed task, date, lane, files changed, validation run, success scenario result, state updates, and recommended follow-up.
+
+`NEXT_TASK.md` tracks the highest-signal recommended next work. It should stay small, concrete, scoped, validation-ready, and consistent with Level 3 task recommendation rules.
+
+`ROADMAP.md` remains the long-running planning source. Codex reads it before work and may recommend updates, but it should not edit it unless the task explicitly includes roadmap maintenance.
+
+## Work Lanes
+
+Use these lanes when classifying active, completed, and recommended tasks:
+
+- Core/API: engine behavior, Python models, serialization contracts, API services, persistence, execution queue, and public command/event surfaces.
+- Dashboard/UI: web dashboard pages, components, live monitoring, replay views, run browsing, and UI validation.
+- Dev Workflow: `./tes` workflow commands, local development scripts, CI wiring, repository automation, and Codex operating docs.
+- Tests/Documentation: test coverage, examples, docs, contributor guidance, and validation documentation.
+
+## Task Recommendation Rules
+
+When recommending future work, Codex must:
+- Recommend 1-3 next tasks.
+- Prefer highest-impact tasks.
+- Prefer independent tasks.
+- Avoid overlapping file ownership.
+- Identify the lane for each recommended task.
+- Include the expected validation command or success scenario.
+- Avoid recommending product code changes that would weaken strict contracts or alter matching behavior without explicit approval.
 
 ## Operating Modes
 
@@ -85,6 +140,43 @@ Rules:
 - Preserve strict command and event contracts.
 - Stop immediately if the task requires files outside the approved scope.
 
+## Level 3 Operating Cycle
+
+Use this cycle for every future Level 3 task:
+
+1. Read `ROADMAP.md`, `NEXT_TASK.md`, `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, and `CODEX_STATE.md`.
+2. Confirm the requested task scope, work lane, file ownership, success scenario, and validation target.
+3. Mark or update the task in `ACTIVE_TASKS.md` when work begins.
+4. Implement only the approved change.
+5. Run validation commands appropriate to the task.
+6. Execute the task's `Success Scenario`.
+7. Repair failures within the approved scope and retest.
+8. When the task is complete or blocked, update `ACTIVE_TASKS.md`, `COMPLETED_TASKS.md`, `NEXT_TASK.md`, and `CODEX_STATE.md`.
+9. Report completion using the required Level 3 completion report fields.
+
+Example Level 3 operating cycle:
+
+```markdown
+Pre-task intake:
+- Read ROADMAP.md, NEXT_TASK.md, ACTIVE_TASKS.md, COMPLETED_TASKS.md, CODEX_STATE.md.
+- Select lane: Dev Workflow.
+- Confirm file ownership: tes, docs/cli.md, sim/tests/test_tes_root_cli.py.
+- Define success scenario: command prints expected help and exits successfully.
+
+Task execution:
+- Update ACTIVE_TASKS.md with the in-progress task.
+- Implement the scoped workflow change.
+- Run the selected validation command.
+- Execute the success scenario.
+
+Post-task state update:
+- Remove the task from ACTIVE_TASKS.md or mark it blocked.
+- Add the result to COMPLETED_TASKS.md.
+- Refresh NEXT_TASK.md with 1-3 independent recommendations.
+- Refresh CODEX_STATE.md with phase, priorities, blockers, lanes, last completed task, and workflow level.
+- Report the completed task, success scenario result, files changed, validation results, state updates, and recommended next tasks.
+```
+
 ## Validation Commands
 
 Required validation commands that may apply to TES work:
@@ -101,6 +193,7 @@ Validation selection:
 - For Python-only changes, minimum validation is `./tes check python-release`.
 - For web changes, run `cd web && npm run build`.
 - For docs-only workflow changes, full build is not required unless Codex chooses to validate more broadly.
+- For Level 3 state-only or workflow-doc updates, run `git status`, `git diff --stat`, and `git diff --check` at minimum when requested.
 - Never claim tests passed unless they were actually run.
 
 ## Test-Fix-Retest Loop
@@ -114,7 +207,7 @@ When validation fails:
 
 ## Level 2 Validation Loop
 
-For Level 2 tasks, Codex must run this loop:
+For Level 2 and Level 3 tasks, Codex must run this loop:
 
 1. Implement the approved change.
 2. Run the validation tests appropriate to the task.
@@ -202,52 +295,48 @@ Codex must stop and ask before continuing when:
 ## Commit and Push Permissions
 
 - Codex does not commit or push by default.
-- Codex must not commit or push for Level 1 tasks unless explicitly instructed.
+- Codex must not commit or push for Level 1, Level 2, or Level 3 tasks unless explicitly instructed.
 - Commit messages must use Conventional Commits when commits are approved.
 - Branch names must not use `codex/` prefixes.
 - Pushing, PR creation, and merge actions require explicit user approval for the specific action.
 
 ## Reporting Requirements
 
-Every completion report must include:
+Every Level 3 completion report must include:
+- Completed task.
+- Success scenario result.
 - Files changed.
-- Validation commands run.
 - Validation results.
-- Success scenario steps executed.
-- Observed result.
-- Evidence.
-- Remaining issues.
-- Blockers.
-- Risks or unresolved questions.
-- Next recommended task.
+- State updates.
+- Recommended next tasks.
 
-Codex should also report when no validation was run and explain why.
+Codex should also include blockers, remaining issues, risks, and unresolved questions when applicable. Codex should report when no validation was run and explain why.
 
-## Required Level 2 Completion Report Section
+## Required Level 3 Completion Report Section
 
-Every Level 2 completion report must include:
+Every Level 3 completion report must include:
 
 ```markdown
-## SUCCESS SCENARIO
+## LEVEL 3 COMPLETION REPORT
 
-Steps executed:
+Completed task:
 
-Observed result:
+Success scenario result:
 
-Evidence:
+Files changed:
 
-Remaining issues:
+Validation results:
 
-Blockers:
+State updates:
 
-Recommended next task:
+Recommended next tasks:
 ```
 
 ## Updating NEXT_TASK.md
 
 At Level 1 or Level 2, Codex may update `NEXT_TASK.md` only when the task explicitly includes it or the workflow task requires it.
 
-At Levels 3-5, `NEXT_TASK.md` maintenance requires human approval before use. Updates should keep the next task small, concrete, and validation-ready.
+At Level 3, Codex must update `NEXT_TASK.md` after every completed task. Updates should keep recommended tasks small, concrete, independent, scoped, validation-ready, and limited to 1-3 recommendations.
 
 ## Standard Completion Report
 
@@ -261,25 +350,23 @@ At Levels 3-5, `NEXT_TASK.md` maintenance requires human approval before use. Up
 ## Validation
 - [ ] `git status`
 - [ ] `git diff --stat`
+- [ ] `git diff --check`
 - [ ] Other commands actually run:
 
-## SUCCESS SCENARIO
-Steps executed:
+## LEVEL 3 COMPLETION REPORT
+Completed task:
 
-Observed result:
+Success scenario result:
 
-Evidence:
+Files changed:
 
-Remaining issues:
+Validation results:
 
-Blockers:
+State updates:
 
-Recommended next task:
+Recommended next tasks:
 
 ## Risks
-- 
-
-## Next Recommended Task
 - 
 ```
 
@@ -293,6 +380,9 @@ Goal:
 Allowed files:
 
 Do not edit:
+
+Workflow level:
+- Level 3: project operating loop
 
 Mode:
 - Investigation-only / Edit
